@@ -69,46 +69,6 @@ impl BitwardenClient {
         Ok(false)
     }
 
-    /// 登录 Bitwarden
-    pub fn login(&mut self, api_key: &str, api_secret: &str, master_password: Option<&str>) -> Result<()> {
-        // 检查当前状态
-        let status_output = Command::new("bw").arg("status").output()?;
-        let status_str = String::from_utf8_lossy(&status_output.stdout);
-
-        // 如果已经登录但锁定，尝试解锁
-        if status_str.contains("\"status\":\"locked\"") {
-            if let Some(password) = master_password {
-                return self.unlock(password);
-            } else {
-                return Err(anyhow!("保险库已锁定，请提供主密码或运行 'bw unlock'"));
-            }
-        }
-
-        // 如果未登录，先登录
-        if status_str.contains("\"status\":\"unauthenticated\"") {
-            // 使用 API key 登录 - 设置环境变量后调用 login --apikey
-            let output = Command::new("bw")
-                .args(["login", "--apikey"])
-                .env("BW_CLIENTID", api_key)
-                .env("BW_CLIENTSECRET", api_secret)
-                .output()?;
-
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                return Err(anyhow!("登录失败: {}", stderr));
-            }
-        }
-
-        // 解锁保险库
-        if let Some(password) = master_password {
-            self.unlock(password)?;
-        } else {
-            return Err(anyhow!("请提供主密码解锁保险库"));
-        }
-
-        Ok(())
-    }
-
     /// 解锁保险库
     fn unlock(&mut self, password: &str) -> Result<()> {
         let output = Command::new("bw")
@@ -127,13 +87,17 @@ impl BitwardenClient {
         Ok(())
     }
 
-    /// 确保已登录（如果未登录则尝试登录）
-    pub fn ensure_logged_in(&mut self, api_key: &str, api_secret: &str, master_password: Option<&str>) -> Result<()> {
+    /// 确保已解锁（如果未解锁则尝试解锁）
+    /// 如果 master_password 为 None 且需要解锁，会返回错误
+    pub fn ensure_unlocked(&mut self, master_password: Option<&str>) -> Result<()> {
         if self.session_key.is_none() {
             // 尝试检查缓存 session
             if !self.check_session()? {
-                // 需要登录
-                self.login(api_key, api_secret, master_password)?;
+                // 需要解锁
+                let password = master_password.ok_or_else(|| {
+                    anyhow!("保险库已锁定，需要主密码解锁")
+                })?;
+                self.unlock(password)?;
             }
         } else {
             // session 存在，但可能已过期，检查状态
@@ -142,27 +106,26 @@ impl BitwardenClient {
 
             if status_str.contains("\"status\":\"locked\"") {
                 // session 过期，保险库已锁定，需要重新解锁
-                if let Some(password) = master_password {
-                    self.unlock(password)?;
-                } else {
-                    return Err(anyhow!("保险库已锁定，请提供主密码"));
-                }
+                let password = master_password.ok_or_else(|| {
+                    anyhow!("保险库已锁定，需要主密码解锁")
+                })?;
+                self.unlock(password)?;
             }
         }
         Ok(())
     }
 
-    /// 获取 session（如果需要先登录）
-    pub fn get_session(&mut self, api_key: &str, api_secret: &str, master_password: Option<&str>) -> Result<String> {
-        self.ensure_logged_in(api_key, api_secret, master_password)?;
+    /// 获取 session（如果需要先解锁）
+    pub fn get_session(&mut self, master_password: Option<&str>) -> Result<String> {
+        self.ensure_unlocked(master_password)?;
         self.session_key
             .clone()
             .ok_or_else(|| anyhow!("无法获取 session"))
     }
 
     /// 列出所有 items
-    pub fn list_items(&mut self, api_key: &str, api_secret: &str, master_password: Option<&str>) -> Result<Vec<BitwardenItem>> {
-        let session = self.get_session(api_key, api_secret, master_password)?;
+    pub fn list_items(&mut self, master_password: Option<&str>) -> Result<Vec<BitwardenItem>> {
+        let session = self.get_session(master_password)?;
 
         let output = Command::new("bw")
             .args(["list", "items", "--session", &session])
@@ -178,8 +141,8 @@ impl BitwardenClient {
     }
 
     /// 列出所有 folders
-    pub fn list_folders(&mut self, api_key: &str, api_secret: &str, master_password: Option<&str>) -> Result<Vec<BitwardenFolder>> {
-        let session = self.get_session(api_key, api_secret, master_password)?;
+    pub fn list_folders(&mut self, master_password: Option<&str>) -> Result<Vec<BitwardenFolder>> {
+        let session = self.get_session(master_password)?;
 
         let output = Command::new("bw")
             .args(["list", "folders", "--session", &session])
@@ -194,54 +157,15 @@ impl BitwardenClient {
         Ok(folders)
     }
 
-    /// 根据前缀筛选 items
-    #[allow(dead_code)]
-    pub fn list_items_by_prefix(
-        &mut self,
-        api_key: &str,
-        api_secret: &str,
-        master_password: Option<&str>,
-        prefix: Option<&str>,
-        service_name: Option<&str>,
-    ) -> Result<Vec<BitwardenItem>> {
-        let items = self.list_items(api_key, api_secret, master_password)?;
-
-        let filtered: Vec<BitwardenItem> = items
-            .into_iter()
-            .filter(|item| {
-                // 按前缀筛选（folder name）
-                let _prefix_matches = if let Some(_prefix) = prefix {
-                    // 需要匹配 folder 的前缀
-                    true // 暂时不做folder匹配，后续优化
-                } else {
-                    true
-                };
-
-                // 按服务名筛选
-                let matches_service = if let Some(service) = service_name {
-                    item.name.as_str().map(|n| n.to_lowercase()).unwrap_or_default().contains(&service.to_lowercase())
-                } else {
-                    true
-                };
-
-                _prefix_matches && matches_service
-            })
-            .collect();
-
-        Ok(filtered)
-    }
-
     /// 根据 folder 前缀和服务名筛选 items
     pub fn list_items_by_folder_and_service(
         &mut self,
-        api_key: &str,
-        api_secret: &str,
         master_password: Option<&str>,
         folder_prefix: Option<&str>,
         service_name: Option<&str>,
     ) -> Result<Vec<BitwardenItem>> {
-        let items = self.list_items(api_key, api_secret, master_password)?;
-        let folders = self.list_folders(api_key, api_secret, master_password)?;
+        let items = self.list_items(master_password)?;
+        let folders = self.list_folders(master_password)?;
 
         // 构建 folder_id -> folder_name 映射
         let folder_map: std::collections::HashMap<String, String> = folders

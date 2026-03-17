@@ -173,22 +173,31 @@ impl Config {
         self.projects.iter().find(|p| p.name == name)
     }
 
-    /// 获取 API Key
+    /// 获取 API Key (保留以备后用)
+    #[allow(dead_code)]
     pub fn get_api_key(&self) -> Option<&str> {
         self.bitwarden.as_ref().and_then(|b| b.api_key.as_deref())
     }
 
-    /// 获取 API Secret
+    /// 获取 API Secret (保留以备后用)
+    #[allow(dead_code)]
     pub fn get_api_secret(&self) -> Option<&str> {
         self.bitwarden.as_ref().and_then(|b| b.api_secret.as_deref())
     }
 
-    /// 获取 Master Password
+    /// 获取 Master Password (如果未设置，返回 None)
     pub fn get_master_password(&self) -> Option<&str> {
         self.bitwarden.as_ref().and_then(|b| b.master_password.as_deref())
     }
 
-    /// 设置 API Key
+    /// 检查是否设置了 Master Password
+    #[allow(dead_code)]
+    pub fn has_master_password(&self) -> bool {
+        self.get_master_password().is_some()
+    }
+
+    /// 设置 API Key (保留以备后用)
+    #[allow(dead_code)]
     pub fn set_api_key(&mut self, api_key: String) -> Result<()> {
         if self.bitwarden.is_none() {
             self.bitwarden = Some(BitwardenConfig::default());
@@ -197,7 +206,8 @@ impl Config {
         self.save()
     }
 
-    /// 设置 API Secret
+    /// 设置 API Secret (保留以备后用)
+    #[allow(dead_code)]
     pub fn set_api_secret(&mut self, api_secret: String) -> Result<()> {
         if self.bitwarden.is_none() {
             self.bitwarden = Some(BitwardenConfig::default());

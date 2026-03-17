@@ -1,5 +1,6 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
+use dialoguer::Input;
 
 mod bitwarden;
 mod commands;
@@ -40,9 +41,13 @@ enum Commands {
         #[arg(short, long)]
         prefix: Option<String>,
 
-        /// 指定服务名
+        /// 指定服务名（可多次指定）
         #[arg(short, long)]
-        service: Option<String>,
+        service: Vec<String>,
+
+        /// 交互式选择服务
+        #[arg(long)]
+        select: bool,
 
         /// 指定项目名（覆盖当前项目）
         #[arg(long)]
@@ -59,9 +64,13 @@ enum Commands {
         #[arg(short, long)]
         prefix: Option<String>,
 
-        /// 指定服务名
+        /// 指定服务名（可多次指定）
         #[arg(short, long)]
-        service: Option<String>,
+        service: Vec<String>,
+
+        /// 交互式选择服务
+        #[arg(long)]
+        select: bool,
 
         /// 指定项目名（覆盖当前项目）
         #[arg(long)]
@@ -98,6 +107,50 @@ enum Commands {
     Config(config_cmd::ConfigCommands),
 }
 
+/// 交互式选择多个服务
+fn select_services(available_services: &[String]) -> Result<Vec<String>> {
+    use dialoguer::MultiSelect;
+
+    if available_services.is_empty() {
+        return Err(anyhow!("没有可用的服务"));
+    }
+
+    let selection = MultiSelect::new()
+        .with_prompt("选择服务（空格键选择，回车确认）")
+        .items(available_services)
+        .interact()?;
+
+    Ok(selection.iter().map(|&i| available_services[i].clone()).collect())
+}
+
+/// 获取 master password，必要时提示用户输入
+fn get_master_password() -> Result<Option<String>> {
+    // 检查环境变量
+    if let Ok(password) = std::env::var("BW_MASTER_PASSWORD") {
+        if !password.is_empty() {
+            return Ok(Some(password));
+        }
+    }
+
+    // 尝试从配置文件读取
+    if let Ok(config) = Config::load() {
+        if let Some(password) = config.get_master_password() {
+            return Ok(Some(password.to_string()));
+        }
+    }
+
+    // 未配置密码，提示用户输入
+    let password: String = Input::new()
+        .with_prompt("请输入 Bitwarden 主密码")
+        .interact_text()?;
+
+    if password.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(password))
+    }
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -118,15 +171,19 @@ fn main() -> Result<()> {
                         .and_then(|p| config.get_project_by_name(p))
                         .map(|p| p.prefix.clone())
                 })
-                .or_else(|| config.get_current_project().map(|p| p.prefix.clone()))
-                .or_else(|| config.default_prefix.clone());
+                .or_else(|| config.get_current_project().map(|p| p.prefix.clone()));
 
-            list::list_items(&mut config, effective_prefix.as_deref(), service.as_deref())?;
+            // 获取 master password
+            let master_password = get_master_password()?;
+            let master_password_opt = master_password.as_deref();
+
+            list::list_items(master_password_opt, effective_prefix.as_deref(), service.as_deref())?;
         }
 
         Commands::Generate {
             prefix,
             service,
+            select,
             project,
             format,
         } => {
@@ -137,13 +194,29 @@ fn main() -> Result<()> {
                         .and_then(|p| config.get_project_by_name(p))
                         .map(|p| p.prefix.clone())
                 })
-                .or_else(|| config.get_current_project().map(|p| p.prefix.clone()))
-                .or_else(|| config.default_prefix.clone());
+                .or_else(|| config.get_current_project().map(|p| p.prefix.clone()));
+
+            // 获取服务列表
+            let services = if select {
+                // 交互式选择
+                let available = config.default_services.clone();
+                select_services(&available)?
+            } else if !service.is_empty() {
+                service
+            } else if let Some(project) = config.get_current_project() {
+                project.services.clone()
+            } else {
+                config.default_services.clone()
+            };
+
+            // 获取 master password
+            let master_password = get_master_password()?;
+            let master_password_opt = master_password.as_deref();
 
             generate::generate_env(
-                &mut config,
+                master_password_opt,
                 effective_prefix.as_deref(),
-                service.as_deref(),
+                services,
                 &format,
             )?;
         }
@@ -151,6 +224,7 @@ fn main() -> Result<()> {
         Commands::Export {
             prefix,
             service,
+            select,
             project,
             config: config_file,
             output,
@@ -163,12 +237,21 @@ fn main() -> Result<()> {
                         .and_then(|p| config.get_project_by_name(p))
                         .map(|p| p.prefix.clone())
                 })
-                .or_else(|| config.get_current_project().map(|p| p.prefix.clone()))
-                .or_else(|| config.default_prefix.clone());
+                .or_else(|| config.get_current_project().map(|p| p.prefix.clone()));
 
-            // 获取服务列表：命令行 > 配置文件 > 项目配置 > 默认配置
-            let services = if service.is_some() {
-                service.into_iter().collect()
+            // 获取服务列表
+            let services = if select {
+                // 交互式选择
+                let available = if let Some(ref cf) = config_file {
+                    config::load_services_from_file(cf)?
+                } else if let Some(project) = config.get_current_project() {
+                    project.services.clone()
+                } else {
+                    config.default_services.clone()
+                };
+                select_services(&available)?
+            } else if !service.is_empty() {
+                service
             } else if let Some(ref cf) = config_file {
                 config::load_services_from_file(cf)?
             } else if let Some(project) = config.get_current_project() {
@@ -177,8 +260,12 @@ fn main() -> Result<()> {
                 config.default_services.clone()
             };
 
+            // 获取 master password
+            let master_password = get_master_password()?;
+            let master_password_opt = master_password.as_deref();
+
             export::export_env(
-                &mut config,
+                master_password_opt,
                 effective_prefix.as_deref(),
                 services,
                 &format,

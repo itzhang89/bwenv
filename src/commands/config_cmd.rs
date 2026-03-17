@@ -23,14 +23,6 @@ pub fn config_command(cmd: ConfigCommands, config: &mut Config) -> Result<()> {
     match cmd {
         ConfigCommands::Set { key, value } => {
             match key.as_str() {
-                "api_key" => {
-                    config.set_api_key(value)?;
-                    println!("已设置 api_key");
-                }
-                "api_secret" => {
-                    config.set_api_secret(value)?;
-                    println!("已设置 api_secret");
-                }
                 "master_password" => {
                     config.set_master_password(value)?;
                     println!("已设置 master_password");
@@ -54,11 +46,13 @@ pub fn config_command(cmd: ConfigCommands, config: &mut Config) -> Result<()> {
             println!("当前配置:");
             println!();
             if let Some(ref bw) = config.bitwarden {
-                println!("  api_key: {}", bw.api_key.as_deref().unwrap_or("(未设置)"));
-                println!("  api_secret: {}", if bw.api_secret.is_some() { "******" } else { "(未设置)" });
+                if bw.master_password.is_some() {
+                    println!("  master_password: ********");
+                } else {
+                    println!("  master_password: (未设置，将在运行时提示输入)");
+                }
             } else {
-                println!("  api_key: (未设置)");
-                println!("  api_secret: (未设置)");
+                println!("  master_password: (未设置，将在运行时提示输入)");
             }
             println!("  default_prefix: {:?}", config.default_prefix);
             println!("  default_format: {:?}", config.default_format);
