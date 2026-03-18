@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use crate::bitwarden::client::BitwardenClient;
 use crate::parser::env_gen::{to_env_format, to_json_format, to_shell_format, item_to_env_vars, EnvVar};
 
-/// 查找项目目录下的 .claude/settings.local.json
+/// Find .claude/settings.local.json in project directory
 fn find_claude_settings_path() -> Option<PathBuf> {
     let current_dir = std::env::current_dir().ok()?;
     let settings_path = current_dir.join(".claude").join("settings.local.json");
@@ -32,7 +32,7 @@ fn read_claude_settings() -> Result<serde_json::Map<String, serde_json::Value>> 
 /// 写入 Claude 设置
 fn write_claude_settings(settings: &serde_json::Map<String, serde_json::Value>) -> Result<()> {
     let settings_path = find_claude_settings_path()
-        .ok_or_else(|| anyhow!("无法获取当前目录"))?;
+        .ok_or_else(|| anyhow!("Cannot get current directory"))?;
 
     // 确保 .claude 目录存在
     if let Some(parent) = settings_path.parent() {
@@ -47,7 +47,7 @@ fn write_claude_settings(settings: &serde_json::Map<String, serde_json::Value>) 
     Ok(())
 }
 
-/// 获取当前项目名称
+/// Get current project name
 fn get_current_project_name() -> Option<String> {
     if let Ok(config) = crate::config::Config::load() {
         if let Some(project) = config.get_current_project() {
@@ -57,7 +57,7 @@ fn get_current_project_name() -> Option<String> {
     None
 }
 
-/// 将环境变量写入 Claude Code 项目配置（合并模式）
+/// Add env vars to Claude Code project config (merge mode)
 fn add_to_claude_settings(env_vars: &[EnvVar], project_name: &str) -> Result<()> {
     let mut settings = read_claude_settings()?;
 
@@ -65,7 +65,7 @@ fn add_to_claude_settings(env_vars: &[EnvVar], project_name: &str) -> Result<()>
     let env = settings.entry("env").or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
 
     let env_map = env.as_object_mut()
-        .ok_or_else(|| anyhow!("env 字段格式错误"))?;
+        .ok_or_else(|| anyhow!("Invalid env field format"))?;
 
     // 添加新的环境变量
     for var in env_vars {
@@ -75,12 +75,12 @@ fn add_to_claude_settings(env_vars: &[EnvVar], project_name: &str) -> Result<()>
     // 更新或创建元数据
     let metadata = settings.entry("_bwenv").or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
     let metadata_map = metadata.as_object_mut()
-        .ok_or_else(|| anyhow!("_bwenv 字段格式错误"))?;
+        .ok_or_else(|| anyhow!("Invalid _bwenv field format"))?;
 
     // 获取当前项目的 var 列表
     let project_vars = metadata_map.entry(project_name).or_insert_with(|| serde_json::Value::Array(vec![]));
     let vars_array = project_vars.as_array_mut()
-        .ok_or_else(|| anyhow!("项目 var 列表格式错误"))?;
+        .ok_or_else(|| anyhow!("Invalid project var list format"))?;
 
     // 添加新 var 到列表（避免重复）
     for var in env_vars {
@@ -94,10 +94,10 @@ fn add_to_claude_settings(env_vars: &[EnvVar], project_name: &str) -> Result<()>
     Ok(())
 }
 
-/// 从 Claude Code 项目配置中移除当前项目的环境变量
+/// Remove env vars from Claude Code project config
 fn remove_from_claude_settings(project_name: &str) -> Result<usize> {
     let settings_path = find_claude_settings_path()
-        .ok_or_else(|| anyhow!("无法获取当前目录"))?;
+        .ok_or_else(|| anyhow!("Cannot get current directory"))?;
 
     if !settings_path.exists() {
         return Ok(0);
@@ -180,8 +180,8 @@ fn remove_from_claude_settings(project_name: &str) -> Result<usize> {
     Ok(removed_count)
 }
 
-/// 生成环境变量
-/// services 为 None 或空时，查询全部（只按 prefix 过滤）
+/// Generate environment variables
+/// If services is None or empty, query all (only filter by prefix)
 pub fn generate_env(
     master_password: Option<&str>,
     prefix: Option<&str>,
@@ -194,7 +194,7 @@ pub fn generate_env(
     // 收集所有服务的环境变量
     let mut all_vars = Vec::new();
 
-    // 如果指定了 services，则按服务名筛选；否则查询全部
+    // If services specified, filter by service name; otherwise query all
     if let Some(svc_list) = services {
         if !svc_list.is_empty() {
             for service in &svc_list {
@@ -241,7 +241,7 @@ pub fn generate_env(
         return Ok(());
     }
 
-    // 按格式输出
+    // Generate output in specified format
     let output_content = match format {
         "env" => to_env_format(&all_vars),
         "json" => to_json_format(&all_vars),

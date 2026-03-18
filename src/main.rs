@@ -135,7 +135,7 @@ enum ConfigCommands {
     Show,
     /// Initialize
     Init,
-    /// 设置
+    /// Set
     Set {
         key: String,
         value: String,
@@ -158,7 +158,7 @@ fn get_master_password() -> Result<Option<String>> {
     use dialoguer::Password;
 
     let password: String = Password::new()
-        .with_prompt("请输入 Bitwarden 主密码")
+        .with_prompt("Enter Bitwarden master password")
         .interact()?;
 
     if password.is_empty() {
@@ -184,10 +184,10 @@ fn run_generate(
     } else if let Some(ref cf) = config_file {
         Some(config::load_services_from_file(cf)?)
     } else if let Some(project) = config.get_current_project() {
-        // 如果项目配置了 services 则使用，否则查询全部
+        // Use project services if configured, otherwise query all
         project.services.clone()
     } else {
-        // 没有指定任何服务，查询全部
+        // If no service specified, query all
         None
     };
 
@@ -207,14 +207,14 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     let mut config = Config::load()?;
 
-    // 保存 cli 参数的副本供后续使用
+    // Save CLI args for later use
     let cli_prefix = cli.prefix.clone();
     let cli_service = cli.service.clone();
     let cli_config = cli.config.clone();
     let cli_output = cli.output.clone();
     let cli_format = cli.format.clone();
 
-    // 处理默认命令：bwenv 直接运行 generate
+    // Default command: bwenv runs generate
     let command = cli.command.unwrap_or(Commands::Gen {
         prefix: cli_prefix.clone(),
         service: cli_service.clone(),
@@ -340,11 +340,11 @@ fn main() -> Result<()> {
         Commands::Use { name, output, format } => {
             // If project name is specified, switch directly; otherwise auto-detect from .bwenv or interactive selection
             if let Some(project_name) = name {
-                // 直接切换到指定项目
+                // Switch directly to specified project
                 config.set_current_project(&project_name)?;
                 println!("Switched to project: {}", project_name);
             } else if let Ok(Some(project)) = config::Config::load_project_from_dir() {
-                // 如果项目不存在于配置中，添加它
+                // If project doesn't exist in config, add it
                 if !config.projects.iter().any(|p| p.name == project.name) {
                     config.projects.push(project.clone());
                     config.save()?;
@@ -352,17 +352,17 @@ fn main() -> Result<()> {
                 config.set_current_project(&project.name)?;
                 println!("Auto-detected project: {} (from .bwenv)", project.name);
             } else {
-                // 交互式选择项目
+                // Interactive project selection
                 use dialoguer::Select;
                 let projects: Vec<&str> = config.projects.iter().map(|p| p.name.as_str()).collect();
 
                 if projects.is_empty() {
-                    return Err(anyhow!("未配置任何项目，请先使用 'bwenv project add' 添加项目"));
+                    return Err(anyhow!("No projects configured. Add a project first using 'bwenv project add'"));
                 }
 
                 let current = config.current_project.clone().unwrap_or_default();
                 let selection = Select::new()
-                    .with_prompt("选择项目")
+                    .with_prompt("Select project")
                     .items(&projects)
                     .default(projects.iter().position(|p| *p == current).unwrap_or(0))
                     .interact()?;
@@ -372,8 +372,8 @@ fn main() -> Result<()> {
                 println!("Switched to project: {}", selected);
             }
 
-            // 只有指定了 --output 或其他参数时才生成环境变量
-            // 否则只切换项目
+            // Only generate env vars if --output or other args specified
+            // Otherwise just switch project
             if output.is_some() || !cli_service.is_empty() || cli_prefix.is_some() || cli_config.is_some() {
                 run_generate(&config, cli_prefix, cli_service, cli_config, output, format)?;
             }
