@@ -75,3 +75,7 @@ docker-compose.override.yml
 
 *.bak
 *.old
+
+# ===== AI 编辑器 =====
+.claude
+.curosr
