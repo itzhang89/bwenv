@@ -18,8 +18,7 @@ impl BitwardenClient {
     fn session_path() -> PathBuf {
         dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join(".bwenv")
-            .join(".session")
+            .join(".bwenv_session")
     }
 
     /// 加载缓存的 session

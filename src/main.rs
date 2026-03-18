@@ -1,6 +1,5 @@
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
-use dialoguer::Input;
 
 mod bitwarden;
 mod commands;
@@ -200,9 +199,11 @@ fn get_master_password() -> Result<Option<String>> {
         }
     }
 
-    let password: String = Input::new()
+    use dialoguer::Password;
+
+    let password: String = Password::new()
         .with_prompt("请输入 Bitwarden 主密码")
-        .interact_text()?;
+        .interact()?;
 
     if password.is_empty() {
         Ok(None)

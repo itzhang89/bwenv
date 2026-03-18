@@ -45,45 +45,20 @@ impl Config {
 
     fn load_from_file() -> Result<Self> {
         let path = Self::config_path();
-        if path.exists() && path.is_file() {
+        if path.exists() {
             let content = fs::read_to_string(&path)?;
-
-            // 尝试解析为 Config（新版本 ~/.bwenv）
-            if let Ok(config) = serde_yaml::from_str::<Config>(&content) {
-                return Ok(config);
-            }
-
-            // 如果失败，尝试解析为 Vec<Project>（旧版 ~/.bwenv/projects）
-            if let Ok(projects) = serde_yaml::from_str::<Vec<Project>>(&content) {
-                return Ok(Config {
-                    projects,
-                    ..Default::default()
-                });
-            }
-
-            Err(anyhow!("无法解析配置文件"))
+            let config: Config = serde_yaml::from_str(&content)?;
+            Ok(config)
         } else {
             Ok(Config::default())
         }
     }
 
     fn config_path() -> PathBuf {
-        // 优先使用 ~/.bwenv 文件（新版本），兼容旧版的 ~/.bwenv/projects
-        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-        let bwenv_dir = home.join(".bwenv");
-        let new_path = home.join(".bwenv");
-        let old_path = bwenv_dir.join("projects");
-
-        if new_path.is_file() {
-            new_path
-        } else if old_path.is_file() {
-            old_path
-        } else if bwenv_dir.is_dir() {
-            // 旧版目录结构：~/.bwenv/config.yaml
-            bwenv_dir.join("config.yaml")
-        } else {
-            new_path // 默认返回新路径
-        }
+        // ~/.bwenv 文件
+        dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(".bwenv")
     }
 
     /// 从当前目录或父目录查找 .bwenv 文件
@@ -133,17 +108,7 @@ impl Config {
 
     /// 保存配置到文件
     pub fn save(&self) -> Result<()> {
-        // 保存到 ~/.bwenv（新版本）
-        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-        let bwenv_path = home.join(".bwenv");
-
-        // 如果 ~/.bwenv 是目录（旧版），保存到 config.yaml
-        let path = if bwenv_path.is_dir() {
-            bwenv_path.join("config.yaml")
-        } else {
-            bwenv_path
-        };
-
+        let path = Self::config_path();
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
