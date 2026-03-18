@@ -4,10 +4,11 @@ use crate::bitwarden::client::BitwardenClient;
 use crate::parser::env_gen::{to_env_format, to_json_format, to_shell_format, item_to_env_vars};
 
 /// 生成环境变量
+/// services 为 None 或空时，查询全部（只按 prefix 过滤）
 pub fn generate_env(
     master_password: Option<&str>,
     prefix: Option<&str>,
-    services: Vec<String>,
+    services: Option<Vec<String>>,
     format: &str,
     output_path: Option<&str>,
 ) -> Result<()> {
@@ -16,11 +17,40 @@ pub fn generate_env(
     // 收集所有服务的环境变量
     let mut all_vars = Vec::new();
 
-    for service in &services {
+    // 如果指定了 services，则按服务名筛选；否则查询全部
+    if let Some(svc_list) = services {
+        if !svc_list.is_empty() {
+            for service in &svc_list {
+                let items = client.list_items_by_folder_and_service(
+                    master_password,
+                    prefix,
+                    Some(service),
+                )?;
+
+                for item in &items {
+                    let vars = item_to_env_vars(item);
+                    all_vars.extend(vars);
+                }
+            }
+        } else {
+            // services 为空 Vec，等同于查询全部
+            let items = client.list_items_by_folder_and_service(
+                master_password,
+                prefix,
+                None,
+            )?;
+
+            for item in &items {
+                let vars = item_to_env_vars(item);
+                all_vars.extend(vars);
+            }
+        }
+    } else {
+        // services 为 None，查询全部
         let items = client.list_items_by_folder_and_service(
             master_password,
             prefix,
-            Some(service),
+            None,
         )?;
 
         for item in &items {

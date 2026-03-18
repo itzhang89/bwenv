@@ -68,8 +68,12 @@ pub fn list_projects(config: &Config) -> Result<()> {
             " "
         };
         let prefix_display = if project.prefix.is_empty() { "(无)" } else { &project.prefix };
-        println!("{} {}. {} (前缀: {}, 服务: {:?})",
-            marker, i + 1, project.name, prefix_display, project.services);
+        let services_display = match &project.services {
+            Some(svc) if !svc.is_empty() => format!("{:?}", svc),
+            Some(_) | None => "查询全部".to_string(),
+        };
+        println!("{} {}. {} (前缀: {}, 服务: {})",
+            marker, i + 1, project.name, prefix_display, services_display);
     }
     Ok(())
 }

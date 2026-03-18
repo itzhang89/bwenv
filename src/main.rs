@@ -142,6 +142,8 @@ enum ProjectCommands {
         name: String,
         #[arg(short, long)]
         prefix: Option<String>,
+        /// 服务列表（逗号分隔，为空时查询全部）
+        #[arg(short, long, default_value = "")]
         services: String,
     },
     /// 从文件加载项目
@@ -231,23 +233,29 @@ fn run_generate(
         })
         .or_else(|| config.get_current_project().map(|p| p.prefix.clone()));
 
-    let services = if select {
+    let services: Option<Vec<String>> = if select {
         let available = if let Some(ref cf) = config_file {
             config::load_services_from_file(cf)?
         } else if let Some(project) = config.get_current_project() {
-            project.services.clone()
+            project.services.clone().unwrap_or_default()
         } else {
             return Err(anyhow!("请先配置项目或使用 --config 指定服务列表"));
         };
-        select_services(&available)?
+        if available.is_empty() {
+            None // 交互式选择时如果没有可用服务则报错
+        } else {
+            Some(select_services(&available)?)
+        }
     } else if !service.is_empty() {
-        service
+        Some(service)
     } else if let Some(ref cf) = config_file {
-        config::load_services_from_file(cf)?
+        Some(config::load_services_from_file(cf)?)
     } else if let Some(project) = config.get_current_project() {
+        // 如果项目配置了 services 则使用，否则查询全部
         project.services.clone()
     } else {
-        return Err(anyhow!("请先选择项目或使用 --service 指定服务"));
+        // 没有指定任何服务，查询全部
+        None
     };
 
     let master_password = get_master_password()?;
@@ -323,11 +331,17 @@ fn main() -> Result<()> {
                     config_cmd::list_projects(&config)?;
                 }
                 Some(ProjectCommands::Add { name, prefix, services }) => {
-                    let services: Vec<String> = services
-                        .split(',')
-                        .map(|s| s.trim().to_string())
-                        .filter(|s| !s.is_empty())
-                        .collect();
+                    let services: Option<Vec<String>> = if services.is_empty() {
+                        None
+                    } else {
+                        Some(
+                            services
+                                .split(',')
+                                .map(|s| s.trim().to_string())
+                                .filter(|s| !s.is_empty())
+                                .collect(),
+                        )
+                    };
                     let prefix = prefix.unwrap_or_default();
                     config.add_project(config::models::Project::new(&name, &prefix, services))?;
                     println!("已添加项目: {}", name);
@@ -369,7 +383,10 @@ fn main() -> Result<()> {
             if let Some(project) = config.get_current_project() {
                 println!("当前项目: {}", project.name);
                 println!("前缀: {}", project.prefix);
-                println!("服务: {:?}", project.services);
+                match &project.services {
+                    Some(svc) if !svc.is_empty() => println!("服务: {:?}", svc),
+                    Some(_) | None => println!("服务: (查询全部)"),
+                }
             } else {
                 println!("未选择项目。请运行 'bwenv project use <name>' 选择项目。");
             }
