@@ -125,6 +125,7 @@ impl Config {
     }
 
     /// 根据项目名获取项目配置
+    #[allow(dead_code)]
     pub fn get_project_by_name(&self, name: &str) -> Option<&Project> {
         self.projects.iter().find(|p| p.name == name)
     }

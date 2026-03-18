@@ -1,0 +1,77 @@
+# ===== Rust 编译产物 =====
+/target/
+**/*.rs.bk
+
+# ===== Cargo =====
+Cargo.lock
+# ===== IDE / 编辑器 =====
+
+.vscode/
+.idea/
+*.code-workspace
+
+# ===== macOS =====
+
+.DS_Store
+
+# ===== Windows =====
+
+Thumbs.db
+ehthumbs.db
+
+# ===== 日志文件 =====
+
+*.log
+
+# ===== 环境变量（重点） =====
+
+.env
+.env.*
+!.env.example
+
+# ===== 密钥 / 凭证 =====
+
+*.pem
+*.key
+*.crt
+secrets/
+credentials/
+
+# ===== 临时文件 =====
+
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# ===== 测试 / 覆盖率 =====
+
+/coverage/
+*.profraw
+*.profdata
+
+# ===== 构建工具 / CI =====
+
+dist/
+build/
+
+# ===== 数据库 / 本地状态 =====
+
+*.sqlite
+*.db
+
+# ===== Docker（可选） =====
+
+.docker/
+docker-compose.override.yml
+
+# ===== Rust 工具链 =====
+
+.rustup/
+.cargo/
+
+# ===== 其他 =====
+
+*.bak
+*.old
