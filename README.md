@@ -1,214 +1,198 @@
 # bwenv - Bitwarden to Environment Variables Tool
 
-从 Bitwarden vault 读取凭据并转换为环境变量的 CLI 工具。
+A CLI tool to read credentials from Bitwarden vault and convert them to environment variables.
 
-## 安装
+## Installation
 
 ```bash
-# 克隆项目
+# Clone the project
 git clone <repo-url>
 cd bwenv
 
-# 构建
+# Build
 cargo build --release
 
-# 安装到 PATH
+# Install to PATH
 cp target/release/bwenv /usr/local/bin/
 ```
 
-## 前置要求
+## Requirements
 
-- 系统已安装 [Bitwarden CLI](https://github.com/bitwarden/clients/releases) (`bw`)
-- 首次使用需先登录: `bw login`
+- [Bitwarden CLI](https://github.com/bitwarden/clients/releases) (`bw`) must be installed
+- First time use: run `bw login` to login
 
-## 快速开始
+## Quick Start
 
 ```bash
-# 1. 创建项目配置文件 ~/.bwenv
-# 2. 加载项目
-bwenv project load ~/.bwenv
+# 1. Add a project
+bwenv project add dev "mysql,redis" developer
 
-# 3. 直接使用项目（自动切换并导出环境变量）
-bwenv use myproject
-
-# 4. 或者直接运行（使用当前项目）
-bwenv
+# 2. Use the project
+bwenv use dev
 ```
 
-## 项目配置文件
+## How It Works
 
-创建 `~/.bwenv` 文件：
+### Bitwarden Folder Structure
+
+The tool uses Bitwarden's **Folder** feature to organize credentials. The folder name acts as a prefix filter.
+
+```
+Bitwarden Vault
+├── developer/          (Folder)
+│   ├── mysql          (Login item)
+│   ├── redis          (Login item)
+│   └── github         (Login item)
+├── thoughtworks/      (Folder)
+│   ├── aliyun         (Login item)
+│   └── aws            (Login item)
+└── database/          (Folder)
+    └── postgres       (Login item)
+```
+
+### Configuration Format
+
+In `~/.bwenv`, define projects with:
 
 ```yaml
 # ~/.bwenv
 - name: "dev"
-  prefix: "dev"
+  prefix: "developer"    # Matches Bitwarden folder name
   services:
     - mysql
     - redis
     - github
 
 - name: "prod"
-  prefix: "prod"
+  prefix: "thoughtworks"
   services:
-    - mysql
-    - postgres
+    - aliyun
+    - aws
 ```
 
-加载项目：
+### Output Examples
+
+For a Bitwarden item like:
+- Folder: `developer`
+- Item name: `mysql`
+- Username: `admin`
+- Password: `secret123`
+
+The tool generates environment variables:
 
 ```bash
-bwenv project load ~/.bwenv/projects
+# Shell format
+export MYSQL_USER="admin"
+export MYSQL_PASSWORD="secret123"
+
+# .env format
+MYSQL_USER=admin
+MYSQL_PASSWORD=secret123
+
+# JSON format
+{
+  "MYSQL_USER": "admin",
+  "MYSQL_PASSWORD": "secret123"
+}
 ```
 
-## 使用方式
+## Usage
 
-### 方式1：直接运行（使用当前项目）
+### Commands
 
 ```bash
-# 默认运行 generate 命令
-bwenv
+# Generate environment variables (default)
+bwenv                          # Use current project
+bwenv -o .env                  # Export to file
+bwenv -s github                # Filter by service
+bwenv -p developer             # Filter by prefix
+bwenv -f json                  # Output format
 
-# 指定输出文件
-bwenv -o .env
+# Use project
+bwenv use dev                  # Switch project (no output)
+bwenv use dev -o .env          # Switch and export to file
+
+# Project management
+bwenv project                  # List projects
+bwenv project add dev "mysql,redis" developer  # Add project
+bwenv project remove dev       # Remove project
+bwenv project load ~/.bwenv    # Load from file
+
+# Other commands
+bwenv list                     # List Bitwarden items
+bwenv list --folders           # List all Bitwarden folders
+bwenv current                  # Show current project
+bwenv config show              # Show configuration
 ```
 
-### 方式2：使用项目
+### Claude Code Integration
+
+Export environment variables directly to Claude Code project settings:
 
 ```bash
-# 切换到项目并导出环境变量
-bwenv use dev
+# Add env vars to .claude/settings.local.json
+bwenv -p developer -s mysql -o claude
 
-# 指定输出格式
-bwenv use dev -f json -o secrets.json
-
-# 交互式选择服务
-bwenv use dev --select
+# Remove env vars from Claude Code
+bwenv -o claude:remove
 ```
 
-### 方式3：命令行参数
+This creates `.claude/settings.local.json`:
 
-```bash
-# 指定项目
-bwenv --project prod
-
-# 指定服务
-bwenv -s github -s aliyun
-
-# 指定前缀
-bwenv -p thoughtworks
+```json
+{
+  "_bwenv": {
+    "dev": ["MYSQL_USER", "MYSQL_PASSWORD"]
+  },
+  "env": {
+    "MYSQL_USER": "admin",
+    "MYSQL_PASSWORD": "secret123"
+  }
+}
 ```
 
-## 命令
+> **Security Note**: Add `.claude/settings.local.json` to `.gitignore` to prevent sensitive data from being committed.
 
-### bwenv（默认）
+### Project Directory .bwenv File
 
-直接运行 generate 命令：
-
-```bash
-bwenv                          # 使用当前项目
-bwenv -o .env                  # 导出到文件
-bwenv -s github                # 指定服务
-bwenv -p dev                   # 指定前缀
-bwenv -f json                  # JSON 格式
-```
-
-### use
-
-切换到指定项目并导出环境变量：
-
-```bash
-bwenv use dev                  # 切换并导出
-bwenv use prod -o .env        # 切换并导出到文件
-```
-
-### project
-
-项目管理：
-
-```bash
-bwenv project                  # 列出项目
-bwenv project list             # 列出项目
-bwenv project add dev "dev" "mysql,redis"    # 添加项目
-bwenv project load ~/.bwenv           # 从文件加载项目
-bwenv project remove dev      # 删除项目
-bwenv project use dev         # 设置当前项目
-```
-
-### 其他命令
-
-```bash
-bwenv list                    # 列出 items
-bwenv current                 # 查看当前项目
-bwenv config show             # 显示配置
-bwenv config init             # 初始化配置
-```
-
-## 配置
-
-### 主配置文件
-
-`~/.bwenv/config.yaml`:
+Create a `.bwenv` file in your project directory for auto-detection:
 
 ```yaml
-bitwarden:
-  master_password: "your-master-password"
-
-default_format: "shell"
-
-# 当前选中的项目
-current_project: "dev"
-```
-
-### 项目配置文件
-
-`~/.bwenv`:
-
-```yaml
-- name: "dev"
-  prefix: "dev"
-  services:
-    - mysql
-    - redis
-
-- name: "prod"
-  prefix: "prod"
-  services:
-    - mysql
-```
-
-### Master Password 优先级
-
-1. 环境变量 `BW_MASTER_PASSWORD`
-2. 配置文件
-3. 运行时输入
-
-### 项目目录 .bwenv 文件
-
-在项目目录中创建 `.bwenv` 文件，可以自动检测并切换到该项目：
-
-```yaml
-# 项目目录下的 .bwenv
+# project/.bwenv
 name: "myproject"
-prefix: "dev"
+prefix: "developer"
 services:
   - mysql
   - redis
 ```
 
-运行 `bwenv` 时，如果当前目录或父目录存在 `.bwenv` 文件，会自动选择该项目。
+When running `bwenv` in that directory or its subdirectories, the project will be auto-detected.
 
-## 使用示例
+## Configuration
 
-### 开发环境
+### Master Password Priority
+
+1. Environment variable `BW_MASTER_PASSWORD`
+2. Configuration file
+3. Runtime input
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `BW_MASTER_PASSWORD` | Bitwarden master password |
+
+## Examples
+
+### Development Environment
 
 ```bash
-# 方式1：直接导出
+# Export to .env file
 bwenv use dev -o .env
 source .env
 
-# 方式2：直接 eval
-eval $(bwenv use dev)
+# Or use eval
+eval $(bwenv -p developer -s mysql)
 ```
 
 ### Docker Compose
@@ -223,9 +207,3 @@ bwenv use prod -o .env
 export BW_MASTER_PASSWORD="$BW_MASTER_PASSWORD"
 bwenv use prod -f json > secrets.json
 ```
-
-## 环境变量
-
-| 变量 | 说明 |
-|------|------|
-| `BW_MASTER_PASSWORD` | Bitwarden 主密码 |

@@ -16,92 +16,92 @@ struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
 
-    /// 指定前缀筛选
+    /// Filter by prefix
     #[arg(short, long)]
     prefix: Option<String>,
 
-    /// 指定服务名（可多次指定）
+    /// Specify services (can be specified multiple times)
     #[arg(short = 's', long)]
     service: Vec<String>,
 
-    /// 配置文件路径（每行一个服务名）
+    /// Config file path (one service per line)
     #[arg(short, long)]
     config: Option<String>,
 
-    /// 输出文件路径
+    /// Output file path
     #[arg(short, long)]
     output: Option<String>,
 
-    /// 输出格式：shell, env, json
+    /// Output format: shell, env, json
     #[arg(short, long, default_value = "shell")]
     format: String,
 }
 
 #[derive(Subcommand)]
 enum Commands {
-    /// 列出 Bitwarden vault 中的 items
+    /// List Bitwarden vault items
     List {
-        /// 指定前缀筛选
+        /// Filter by prefix
         #[arg(short, long)]
         prefix: Option<String>,
 
-        /// 指定服务名筛选
+        /// Filter by service name
         #[arg(short, long)]
         service: Option<String>,
 
-        /// 列出所有文件夹
+        /// List all folders
         #[arg(long)]
         folders: bool,
     },
 
-    /// 生成环境变量
+    /// Generate environment variables
     Gen {
-        /// 指定前缀筛选
+        /// Filter by prefix
         #[arg(short, long)]
         prefix: Option<String>,
 
-        /// 指定服务名（可多次指定）
+        /// Specify services (can be specified multiple times)
         #[arg(short = 's', long)]
         service: Vec<String>,
 
-        /// 配置文件路径
+        /// Config file path
         #[arg(short, long)]
         config: Option<String>,
 
-        /// 输出文件路径
+        /// Output file path
         #[arg(short, long)]
         output: Option<String>,
 
-        /// 输出格式
+        /// Output format
         #[arg(short, long, default_value = "shell")]
         format: String,
     },
 
-    /// 项目管理
+    /// Project management
     Project {
         #[command(subcommand)]
         command: Option<ProjectCommands>,
     },
 
-    /// 查看当前项目
+    /// Show current project
     Current,
 
-    /// 配置管理
+    /// Configuration management
     Config {
         #[command(subcommand)]
         command: Option<ConfigCommands>,
     },
 
-    /// 使用项目并导出环境变量
+    /// Use project and export environment variables
     Use {
-        /// 项目名称（不指定则交互式选择或从当前目录 .bwenv 自动检测）
+        /// Project name (if not specified, interactive selection or auto-detect from .bwenv)
         name: Option<String>,
 
-        /// 输出文件路径
+        /// Output file path
         #[arg(short, long)]
         output: Option<String>,
 
-        /// 输出格式
+        /// Output format
         #[arg(short, long, default_value = "shell")]
         format: String,
     },
@@ -109,21 +109,21 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum ProjectCommands {
-    /// 列出所有项目
+    /// List all projects
     List,
-    /// 添加项目：bwenv project add <projectname> <services> [prefix]
+    /// Add project: bwenv project add <projectname> <services> [prefix]
     Add {
         name: String,
-        /// 服务列表（逗号分隔，为空时查询全部）
+        /// Service list (comma-separated, empty means all)
         services: String,
-        /// 前缀（可选）
+        /// Prefix (optional)
         prefix: Option<String>,
     },
-    /// 从文件加载项目
+    /// Load projects from file
     Load {
         path: String,
     },
-    /// 删除项目
+    /// Remove project
     Remove {
         name: String,
     },
@@ -131,9 +131,9 @@ enum ProjectCommands {
 
 #[derive(Subcommand)]
 enum ConfigCommands {
-    /// 显示配置
+    /// Show configuration
     Show,
-    /// 初始化
+    /// Initialize
     Init,
     /// 设置
     Set {
@@ -226,13 +226,12 @@ fn main() -> Result<()> {
     match command {
         Commands::List { prefix, service, folders } => {
             if folders {
-                // 列出所有文件夹
                 let master_password = get_master_password()?;
                 let mut client = crate::bitwarden::client::BitwardenClient::new();
                 let bw_folders = client.list_folders(master_password.as_deref())?;
-                println!("可用文件夹:");
+                println!("Available folders:");
                 for folder in &bw_folders {
-                    let name = folder.name.as_str().unwrap_or("(无名称)");
+                    let name = folder.name.as_str().unwrap_or("(unnamed)");
                     println!("  - {}", name);
                 }
             } else {
@@ -273,7 +272,7 @@ fn main() -> Result<()> {
                     };
                     let prefix = prefix.unwrap_or_default();
                     config.add_project(config::models::Project::new(&name, &prefix, services))?;
-                    println!("已添加项目: {}", name);
+                    println!("Project added: {}", name);
                 }
                 Some(ProjectCommands::Load { path }) => {
                     let projects = Config::load_projects_from_file(&path)?;
@@ -284,11 +283,11 @@ fn main() -> Result<()> {
                         }
                     }
                     config.save()?;
-                    println!("已从文件加载 {} 个项目", count);
+                    println!("Loaded {} projects from file", count);
                 }
                 Some(ProjectCommands::Remove { name }) => {
                     config.remove_project(&name)?;
-                    println!("已删除项目: {}", name);
+                    println!("Project removed: {}", name);
                 }
                 None => {
                     config_cmd::list_projects(&config)?;
@@ -298,14 +297,14 @@ fn main() -> Result<()> {
 
         Commands::Current => {
             if let Some(project) = config.get_current_project() {
-                println!("当前项目: {}", project.name);
-                println!("前缀: {}", project.prefix);
+                println!("Current project: {}", project.name);
+                println!("Prefix: {}", project.prefix);
                 match &project.services {
-                    Some(svc) if !svc.is_empty() => println!("服务: {:?}", svc),
-                    Some(_) | None => println!("服务: (查询全部)"),
+                    Some(svc) if !svc.is_empty() => println!("Services: {:?}", svc),
+                    Some(_) | None => println!("Services: (all)"),
                 }
             } else {
-                println!("未选择项目");
+                println!("No project selected");
             }
         }
 
@@ -321,14 +320,14 @@ fn main() -> Result<()> {
                     match key.as_str() {
                         "master_password" => {
                             config.set_master_password(value)?;
-                            println!("已设置 master_password");
+                            println!("master_password set");
                         }
                         "default_format" => {
                             config.set_default_format(value)?;
-                            println!("已设置 default_format");
+                            println!("default_format set");
                         }
                         _ => {
-                            return Err(anyhow!("未知的配置项: {}", key));
+                            return Err(anyhow!("Unknown config key: {}", key));
                         }
                     }
                 }
@@ -339,11 +338,11 @@ fn main() -> Result<()> {
         }
 
         Commands::Use { name, output, format } => {
-            // 如果指定了项目名，直接切换；否则从当前目录 .bwenv 自动检测或交互式选择
+            // If project name is specified, switch directly; otherwise auto-detect from .bwenv or interactive selection
             if let Some(project_name) = name {
                 // 直接切换到指定项目
                 config.set_current_project(&project_name)?;
-                println!("已切换到项目: {}", project_name);
+                println!("Switched to project: {}", project_name);
             } else if let Ok(Some(project)) = config::Config::load_project_from_dir() {
                 // 如果项目不存在于配置中，添加它
                 if !config.projects.iter().any(|p| p.name == project.name) {
@@ -351,7 +350,7 @@ fn main() -> Result<()> {
                     config.save()?;
                 }
                 config.set_current_project(&project.name)?;
-                println!("自动检测到项目: {} (来自 .bwenv)", project.name);
+                println!("Auto-detected project: {} (from .bwenv)", project.name);
             } else {
                 // 交互式选择项目
                 use dialoguer::Select;
@@ -370,7 +369,7 @@ fn main() -> Result<()> {
 
                 let selected = projects[selection].to_string();
                 config.set_current_project(&selected)?;
-                println!("已切换到项目: {}", selected);
+                println!("Switched to project: {}", selected);
             }
 
             // 只有指定了 --output 或其他参数时才生成环境变量

@@ -2,37 +2,37 @@ use anyhow::Result;
 use crate::config::Config;
 
 pub fn show_config(config: &Config) -> Result<()> {
-    println!("当前配置:");
+    println!("Current configuration:");
     println!();
     if let Some(ref bw) = config.bitwarden {
         if bw.master_password.is_some() {
             println!("  master_password: ********");
         } else {
-            println!("  master_password: (未设置，将在运行时提示输入)");
+            println!("  master_password: (not set, will prompt at runtime)");
         }
     } else {
-        println!("  master_password: (未设置，将在运行时提示输入)");
+        println!("  master_password: (not set, will prompt at runtime)");
     }
     println!("  default_format: {:?}", config.default_format);
     println!();
-    println!("  项目: {} 个", config.projects.len());
+    println!("  projects: {}", config.projects.len());
     if let Some(ref current) = config.current_project {
-        println!("  当前项目: {}", current);
+        println!("  current_project: {}", current);
     } else {
-        println!("  当前项目: (未选择)");
+        println!("  current_project: (not set)");
     }
     Ok(())
 }
 
 pub fn init_config() -> Result<()> {
-    let default_config = r#"# Bitwarden 配置
+    let default_config = r#"# Bitwarden Configuration
 bitwarden:
   master_password: "your-master-password"
 
-# 默认输出格式 (shell, env, json)
+# Default output format (shell, env, json)
 default_format: "shell"
 
-# 项目配置
+# Projects
 # projects:
 #   - name: "dev"
 #     prefix: "dev"
@@ -51,28 +51,28 @@ default_format: "shell"
         std::fs::create_dir_all(parent)?;
     }
     std::fs::write(&config_path, default_config)?;
-    println!("配置文件已创建: {}", config_path.display());
+    println!("Config file created: {}", config_path.display());
     Ok(())
 }
 
 pub fn list_projects(config: &Config) -> Result<()> {
     if config.projects.is_empty() {
-        println!("暂无项目，请使用 'bwenv project add' 添加");
+        println!("No projects. Use 'bwenv project add' to add one");
         return Ok(());
     }
-    println!("项目列表:\n");
+    println!("Projects:\n");
     for (i, project) in config.projects.iter().enumerate() {
         let marker = if config.current_project.as_deref() == Some(&project.name) {
             "*"
         } else {
             " "
         };
-        let prefix_display = if project.prefix.is_empty() { "(无)" } else { &project.prefix };
+        let prefix_display = if project.prefix.is_empty() { "(none)" } else { &project.prefix };
         let services_display = match &project.services {
             Some(svc) if !svc.is_empty() => format!("{:?}", svc),
-            Some(_) | None => "查询全部".to_string(),
+            Some(_) | None => "all".to_string(),
         };
-        println!("{} {}. {} (前缀: {}, 服务: {})",
+        println!("{} {}. {} (prefix: {}, services: {})",
             marker, i + 1, project.name, prefix_display, services_display);
     }
     Ok(())

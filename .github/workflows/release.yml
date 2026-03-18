@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release
+        run: |
+          cargo build --release --locked
+
+      - name: Create tarball
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          mkdir -p release
+          cp target/release/bwenv release/
+          tar -czvf bwenv-${VERSION}-x86_64-unknown-linux-gnu.tar.gz -C release .
+
+      - name: Create macOS binary (cross-compile)
+        run: |
+          # For macOS, we'd need cross compilation or a separate job
+          echo "macOS build would require separate runner"
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            bwenv-*.tar.gz
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

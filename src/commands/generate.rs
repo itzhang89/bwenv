@@ -237,7 +237,7 @@ pub fn generate_env(
     }
 
     if all_vars.is_empty() {
-        println!("未找到匹配的 items");
+        println!("No matching items found");
         return Ok(());
     }
 
@@ -262,17 +262,17 @@ pub fn generate_env(
                     .map(|p| p.display().to_string())
                     .unwrap_or_else(|| ".claude/settings.local.json".to_string());
 
-                println!("✓ 环境变量已添加到 Claude Code 项目配置");
+                println!("✓ Environment variables added to Claude Code project config");
                 println!();
-                println!("  项目: {}", project_name);
-                println!("  配置文件: {}", settings_path);
+                println!("  project: {}", project_name);
+                println!("  config file: {}", settings_path);
                 println!();
-                println!("已添加的环境变量 ({} 个):", all_vars.len());
+                println!("Added environment variables ({}):", all_vars.len());
                 for var in &all_vars {
                     println!("  + {}", var.key);
                 }
                 println!();
-                println!("⚠ 请重启 Claude Code 使配置生效");
+                println!("⚠ Restart Claude Code to apply changes");
             }
             "claude:remove" | "claude:clear" => {
                 // 移除当前项目的环境变量
@@ -285,18 +285,18 @@ pub fn generate_env(
                     .map(|p| p.display().to_string())
                     .unwrap_or_else(|| ".claude/settings.local.json".to_string());
 
-                println!("✓ 已从 Claude Code 项目配置中移除环境变量");
+                println!("✓ Environment variables removed from Claude Code project config");
                 println!();
-                println!("  项目: {}", project_name);
-                println!("  配置文件: {}", settings_path);
+                println!("  project: {}", project_name);
+                println!("  config file: {}", settings_path);
                 println!();
-                println!("已移除的环境变量 ({} 个)", removed);
+                println!("Removed environment variables: {}", removed);
                 println!();
-                println!("⚠ 请重启 Claude Code 使配置生效");
+                println!("⚠ Restart Claude Code to apply changes");
             }
             _ => {
                 fs::write(path, &output_content)?;
-                println!("已导出到: {}", path);
+                println!("Exported to: {}", path);
             }
         }
     } else {
