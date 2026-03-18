@@ -14,14 +14,14 @@ impl BitwardenClient {
         Self { session_key: None }
     }
 
-    /// 获取 session 缓存文件路径
+    /// Get session cache file path
     fn session_path() -> PathBuf {
         dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join(".bwenv_session")
     }
 
-    /// 加载缓存的 session
+    /// Load cached session
     fn load_session() -> Option<String> {
         let path = Self::session_path();
         if path.exists() {
@@ -31,7 +31,7 @@ impl BitwardenClient {
         }
     }
 
-    /// 保存 session 到缓存
+    /// Save session to cache
     fn save_session(session: &str) -> Result<()> {
         let path = Self::session_path();
         if let Some(parent) = path.parent() {
@@ -41,7 +41,7 @@ impl BitwardenClient {
         Ok(())
     }
 
-    /// 检查 session 是否有效
+    /// Check if session is valid
     fn check_session(&mut self) -> Result<bool> {
         if let Some(ref session) = self.session_key {
             let output = Command::new("bw")
@@ -53,7 +53,7 @@ impl BitwardenClient {
             }
         }
 
-        // 尝试加载缓存的 session
+        // Try to load cached session
         if let Some(session) = Self::load_session() {
             let output = Command::new("bw")
                 .args(["list", "items", "--session", &session])
@@ -68,7 +68,7 @@ impl BitwardenClient {
         Ok(false)
     }
 
-    /// 解锁保险库
+    /// Unlock vault
     fn unlock(&mut self, password: &str) -> Result<()> {
         let output = Command::new("bw")
             .args(["unlock", password, "--raw"])
@@ -76,7 +76,7 @@ impl BitwardenClient {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(anyhow!("解锁失败: {}", stderr));
+            return Err(anyhow!("Unlock failed: {}", stderr));
         }
 
         let session = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -86,27 +86,27 @@ impl BitwardenClient {
         Ok(())
     }
 
-    /// 确保已解锁（如果未解锁则尝试解锁）
-    /// 如果 master_password 为 None 且需要解锁，会返回错误
+    /// Ensure unlocked (try to unlock if not unlocked)
+    /// If master_password is None and unlock is needed, returns error
     pub fn ensure_unlocked(&mut self, master_password: Option<&str>) -> Result<()> {
         if self.session_key.is_none() {
-            // 尝试检查缓存 session
+            // Try to check cached session
             if !self.check_session()? {
-                // 需要解锁
+                // Need to unlock
                 let password = master_password.ok_or_else(|| {
-                    anyhow!("保险库已锁定，需要主密码解锁")
+                    anyhow!("Vault is locked, need master password to unlock")
                 })?;
                 self.unlock(password)?;
             }
         } else {
-            // session 存在，但可能已过期，检查状态
+            // Session exists, but may be expired, check status
             let status_output = Command::new("bw").arg("status").output()?;
             let status_str = String::from_utf8_lossy(&status_output.stdout);
 
             if status_str.contains("\"status\":\"locked\"") {
-                // session 过期，保险库已锁定，需要重新解锁
+                // Session expired, vault is locked, need to re-unlock
                 let password = master_password.ok_or_else(|| {
-                    anyhow!("保险库已锁定，需要主密码解锁")
+                    anyhow!("Vault is locked, need master password to unlock")
                 })?;
                 self.unlock(password)?;
             }
@@ -114,15 +114,15 @@ impl BitwardenClient {
         Ok(())
     }
 
-    /// 获取 session（如果需要先解锁）
+    /// Get session (unlock if needed first)
     pub fn get_session(&mut self, master_password: Option<&str>) -> Result<String> {
         self.ensure_unlocked(master_password)?;
         self.session_key
             .clone()
-            .ok_or_else(|| anyhow!("无法获取 session"))
+            .ok_or_else(|| anyhow!("Cannot get session"))
     }
 
-    /// 列出所有 items
+    /// List all items
     pub fn list_items(&mut self, master_password: Option<&str>) -> Result<Vec<BitwardenItem>> {
         let session = self.get_session(master_password)?;
 
@@ -132,14 +132,14 @@ impl BitwardenClient {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(anyhow!("获取 items 失败: {}", stderr));
+            return Err(anyhow!("Failed to get items: {}", stderr));
         }
 
         let items: Vec<BitwardenItem> = serde_json::from_slice(&output.stdout)?;
         Ok(items)
     }
 
-    /// 列出所有 folders
+    /// List all folders
     pub fn list_folders(&mut self, master_password: Option<&str>) -> Result<Vec<BitwardenFolder>> {
         let session = self.get_session(master_password)?;
 
@@ -149,14 +149,14 @@ impl BitwardenClient {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(anyhow!("获取 folders 失败: {}", stderr));
+            return Err(anyhow!("Failed to get folders: {}", stderr));
         }
 
         let folders: Vec<BitwardenFolder> = serde_json::from_slice(&output.stdout)?;
         Ok(folders)
     }
 
-    /// 根据 folder 前缀和服务名筛选 items
+    /// Filter items by folder prefix and service name
     pub fn list_items_by_folder_and_service(
         &mut self,
         master_password: Option<&str>,
@@ -166,7 +166,7 @@ impl BitwardenClient {
         let items = self.list_items(master_password)?;
         let folders = self.list_folders(master_password)?;
 
-        // 构建 folder_id -> folder_name 映射
+        // Build folder_id -> folder_name mapping
         let folder_map: std::collections::HashMap<String, String> = folders
             .iter()
             .filter_map(|f| {
@@ -179,7 +179,7 @@ impl BitwardenClient {
         let filtered: Vec<BitwardenItem> = items
             .into_iter()
             .filter(|item| {
-                // 获取 folder name
+                // Get folder name
                 let folder_name = item
                     .folder_id
                     .as_str()
@@ -187,14 +187,14 @@ impl BitwardenClient {
                     .map(|s| s.as_str())
                     .unwrap_or("");
 
-                // 按 folder 前缀筛选
+                // Filter by folder prefix
                 let matches_prefix = if let Some(prefix) = folder_prefix {
                     folder_name.starts_with(prefix)
                 } else {
                     true
                 };
 
-                // 按服务名筛选
+                // Filter by service name
                 let matches_service = if let Some(service) = service_name {
                     item.name.as_str().map(|n| n.to_lowercase()).unwrap_or_default().contains(&service.to_lowercase())
                 } else {

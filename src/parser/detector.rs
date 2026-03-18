@@ -1,6 +1,6 @@
 use crate::config::rules::FieldType;
 
-/// 检测字段类型
+/// Detect field type
 #[allow(dead_code)]
 pub fn detect_field_type(name: &str) -> FieldType {
     FieldType::from_field_name(name)

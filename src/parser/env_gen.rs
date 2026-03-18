@@ -9,14 +9,14 @@ pub struct EnvVar {
     pub value: String,
 }
 
-/// 从 Bitwarden item 生成环境变量
+/// Generate environment variables from Bitwarden item
 pub fn item_to_env_vars(item: &BitwardenItem) -> Vec<EnvVar> {
     let mut vars = Vec::new();
 
-    // 从 item name 提取服务名（去掉前缀）
+    // Extract service name from item name (remove prefix)
     let service_name = extract_service_name(item.get_name().unwrap_or("unknown"));
 
-    // 处理 login 类型
+    // Handle login type
     if let Some(login_val) = item.login.as_object() {
         let login = Login {
             username: login_val.get("username").cloned().unwrap_or(serde_json::Value::Null),
@@ -43,7 +43,7 @@ pub fn item_to_env_vars(item: &BitwardenItem) -> Vec<EnvVar> {
             });
         }
 
-        // 处理 URIs (取第一个)
+        // Handle URIs (take first)
         if let Some(uri) = login.get_uri() {
             let key = generate_env_key(&service_name, "url");
             vars.push(EnvVar {
@@ -61,7 +61,7 @@ pub fn item_to_env_vars(item: &BitwardenItem) -> Vec<EnvVar> {
         }
     }
 
-    // 处理自定义字段
+    // Handle custom fields
     if let Some(fields_arr) = item.fields.as_array() {
         for field_val in fields_arr {
             if let Some(field_obj) = field_val.as_object() {
@@ -79,14 +79,14 @@ pub fn item_to_env_vars(item: &BitwardenItem) -> Vec<EnvVar> {
     vars
 }
 
-/// 从 item name 提取服务名
+/// Extract service name from item name
 fn extract_service_name(item_name: &str) -> String {
-    // 尝试从路径中提取最后一部分作为服务名
-    // 例如："dev/mysql" -> "mysql", "prod/github/api_key" -> "github"
+    // Try to extract last part from path as service name
+    // Example: "dev/mysql" -> "mysql", "prod/github/api_key" -> "github"
     let parts: Vec<&str> = item_name.split('/').collect();
     let last_part = parts.last().unwrap_or(&item_name);
 
-    // 清理服务名：转小写，去掉特殊字符
+    // Clean service name: lowercase, remove special chars
     last_part
         .to_lowercase()
         .chars()
@@ -94,7 +94,7 @@ fn extract_service_name(item_name: &str) -> String {
         .collect()
 }
 
-/// 生成 shell 格式输出
+/// Generate shell format output
 pub fn to_shell_format(vars: &[EnvVar]) -> String {
     vars.iter()
         .map(|var| format!("export {}={}", var.key, shell_escape(&var.value)))
@@ -102,7 +102,7 @@ pub fn to_shell_format(vars: &[EnvVar]) -> String {
         .join("\n")
 }
 
-/// 生成 .env 格式输出
+/// Generate .env format output
 pub fn to_env_format(vars: &[EnvVar]) -> String {
     vars.iter()
         .map(|var| format!("{}={}", var.key, var.value))
@@ -110,7 +110,7 @@ pub fn to_env_format(vars: &[EnvVar]) -> String {
         .join("\n")
 }
 
-/// 生成 JSON 格式输出
+/// Generate JSON format output
 pub fn to_json_format(vars: &[EnvVar]) -> String {
     let map: HashMap<&str, &str> = vars
         .iter()
@@ -119,15 +119,15 @@ pub fn to_json_format(vars: &[EnvVar]) -> String {
     serde_json::to_string_pretty(&map).unwrap_or_else(|_| "{}".to_string())
 }
 
-/// Shell 转义
+/// Shell escape
 fn shell_escape(s: &str) -> String {
     if s.is_empty() {
         return "\"\"".to_string();
     }
 
-    // 如果包含特殊字符，需要引号包裹
+    // If contains special characters, needs quotes
     if s.chars().any(|c| c.is_whitespace() || c == '"' || c == '$' || c == '`') {
-        // 简单的转义：替换 " 为 \"
+        // Simple escape: replace " with \"
         let escaped = s.replace('"', "\\\"");
         format!("\"{}\"", escaped)
     } else {

@@ -11,10 +11,10 @@ fn find_claude_settings_path() -> Option<PathBuf> {
     Some(settings_path)
 }
 
-/// 读取或创建 Claude 设置
+/// Read or create Claude settings
 fn read_claude_settings() -> Result<serde_json::Map<String, serde_json::Value>> {
     let settings_path = find_claude_settings_path()
-        .ok_or_else(|| anyhow!("无法获取当前目录"))?;
+        .ok_or_else(|| anyhow!("Cannot get current directory"))?;
 
     if settings_path.exists() {
         let content = fs::read_to_string(&settings_path)?;
@@ -29,12 +29,12 @@ fn read_claude_settings() -> Result<serde_json::Map<String, serde_json::Value>> 
     }
 }
 
-/// 写入 Claude 设置
+/// Write Claude settings
 fn write_claude_settings(settings: &serde_json::Map<String, serde_json::Value>) -> Result<()> {
     let settings_path = find_claude_settings_path()
         .ok_or_else(|| anyhow!("Cannot get current directory"))?;
 
-    // 确保 .claude 目录存在
+    // Ensure .claude directory exists
     if let Some(parent) = settings_path.parent() {
         if !parent.exists() {
             fs::create_dir_all(parent)?;
@@ -61,28 +61,28 @@ fn get_current_project_name() -> Option<String> {
 fn add_to_claude_settings(env_vars: &[EnvVar], project_name: &str) -> Result<()> {
     let mut settings = read_claude_settings()?;
 
-    // 获取或创建 env 对象
+    // Get or create env object
     let env = settings.entry("env").or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
 
     let env_map = env.as_object_mut()
         .ok_or_else(|| anyhow!("Invalid env field format"))?;
 
-    // 添加新的环境变量
+    // Add new environment variables
     for var in env_vars {
         env_map.insert(var.key.clone(), serde_json::Value::String(var.value.clone()));
     }
 
-    // 更新或创建元数据
+    // Update or create metadata
     let metadata = settings.entry("_bwenv").or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
     let metadata_map = metadata.as_object_mut()
         .ok_or_else(|| anyhow!("Invalid _bwenv field format"))?;
 
-    // 获取当前项目的 var 列表
+    // Get current project var list
     let project_vars = metadata_map.entry(project_name).or_insert_with(|| serde_json::Value::Array(vec![]));
     let vars_array = project_vars.as_array_mut()
         .ok_or_else(|| anyhow!("Invalid project var list format"))?;
 
-    // 添加新 var 到列表（避免重复）
+    // Add new var to list (avoid duplicates)
     for var in env_vars {
         if !vars_array.iter().any(|v| v.as_str() == Some(&var.key)) {
             vars_array.push(serde_json::Value::String(var.key.clone()));
@@ -111,7 +111,7 @@ fn remove_from_claude_settings(project_name: &str) -> Result<usize> {
         _ => return Ok(0),
     };
 
-    // 获取要移除的 var 列表
+    // Get var list to remove
     let vars_to_remove: Vec<String> = if let Some(metadata) = settings_map.get("_bwenv") {
         if let serde_json::Value::Object(metadata_map) = metadata {
             if let Some(project_vars) = metadata_map.get(project_name) {
@@ -132,7 +132,7 @@ fn remove_from_claude_settings(project_name: &str) -> Result<usize> {
         vec![]
     };
 
-    // 移除环境变量
+    // Remove environment variables
     let mut removed_count = 0;
     if let Some(env) = settings_map.get_mut("env") {
         if let serde_json::Value::Object(env_map) = env {
@@ -144,13 +144,13 @@ fn remove_from_claude_settings(project_name: &str) -> Result<usize> {
         }
     }
 
-    // 清理元数据：删除当前项目的记录，并移除所有空数组
+    // Clean up metadata: delete current project record and remove all empty arrays
     if let Some(metadata) = settings_map.get_mut("_bwenv") {
         if let serde_json::Value::Object(metadata_map) = metadata {
-            // 删除当前项目
+            // Delete current project
             metadata_map.remove(project_name);
 
-            // 移除所有空数组的键
+            // Remove all keys with empty arrays
             let empty_keys: Vec<String> = metadata_map
                 .iter()
                 .filter(|(_, v)| {
@@ -167,7 +167,7 @@ fn remove_from_claude_settings(project_name: &str) -> Result<usize> {
                 metadata_map.remove(&key);
             }
 
-            // 如果 _bwenv 变成空对象，则删除整个字段
+            // If _bwenv becomes empty object, delete the entire field
             if metadata_map.is_empty() {
                 settings_map.remove("_bwenv");
             }
@@ -191,7 +191,7 @@ pub fn generate_env(
 ) -> Result<()> {
     let mut client = BitwardenClient::new();
 
-    // 收集所有服务的环境变量
+    // Collect environment variables from all services
     let mut all_vars = Vec::new();
 
     // If services specified, filter by service name; otherwise query all
@@ -210,7 +210,7 @@ pub fn generate_env(
                 }
             }
         } else {
-            // services 为空 Vec，等同于查询全部
+            // Empty services Vec, same as querying all
             let items = client.list_items_by_folder_and_service(
                 master_password,
                 prefix,
@@ -223,7 +223,7 @@ pub fn generate_env(
             }
         }
     } else {
-        // services 为 None，查询全部
+        // services is None, query all
         let items = client.list_items_by_folder_and_service(
             master_password,
             prefix,
@@ -251,11 +251,11 @@ pub fn generate_env(
     if let Some(path) = output_path {
         match path {
             "claude" => {
-                // 获取当前项目名称
+                // Get current project name
                 let project_name = get_current_project_name()
                     .unwrap_or_else(|| "default".to_string());
 
-                // 添加到 Claude Code 项目配置
+                // Add to Claude Code project config
                 add_to_claude_settings(&all_vars, &project_name)?;
 
                 let settings_path = find_claude_settings_path()
@@ -275,7 +275,7 @@ pub fn generate_env(
                 println!("⚠ Restart Claude Code to apply changes");
             }
             "claude:remove" | "claude:clear" => {
-                // 移除当前项目的环境变量
+                // Remove current project environment variables
                 let project_name = get_current_project_name()
                     .unwrap_or_else(|| "default".to_string());
 

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// 字段类型
+/// Field type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FieldType {
     User,
@@ -55,19 +55,19 @@ impl FieldType {
     }
 }
 
-/// 从字段名生成环境变量名
+/// Generate environment variable name from field name
 pub fn generate_env_key(service_name: &str, field_name: &str) -> String {
     let field_type = FieldType::from_field_name(field_name);
     let suffix = field_type.suffix();
 
-    // 将服务名转换为大写下划线格式
+    // Convert service name to uppercase with underscores
     let service_key = service_name
         .to_uppercase()
         .replace('-', "_")
         .replace(' ', "_");
 
     if suffix.is_empty() {
-        // 如果无法识别类型，使用原始字段名
+        // If type cannot be identified, use original field name
         let field_key = field_name
             .to_uppercase()
             .replace('-', "_")
