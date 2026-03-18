@@ -1,13 +1,15 @@
 use anyhow::Result;
+use std::fs;
 use crate::bitwarden::client::BitwardenClient;
 use crate::parser::env_gen::{to_env_format, to_json_format, to_shell_format, item_to_env_vars};
 
-/// 生成环境变量（输出到 stdout）
+/// 生成环境变量
 pub fn generate_env(
     master_password: Option<&str>,
     prefix: Option<&str>,
     services: Vec<String>,
     format: &str,
+    output_path: Option<&str>,
 ) -> Result<()> {
     let mut client = BitwardenClient::new();
 
@@ -33,13 +35,18 @@ pub fn generate_env(
     }
 
     // 按格式输出
-    let output = match format {
+    let output_content = match format {
         "env" => to_env_format(&all_vars),
         "json" => to_json_format(&all_vars),
         _ => to_shell_format(&all_vars),
     };
 
-    println!("{}", output);
+    if let Some(path) = output_path {
+        fs::write(path, &output_content)?;
+        println!("已导出到: {}", path);
+    } else {
+        println!("{}", output_content);
+    }
 
     Ok(())
 }

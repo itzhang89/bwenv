@@ -7,7 +7,7 @@ mod commands;
 mod config;
 mod parser;
 
-use commands::{config_cmd, export, generate, list, switch};
+use commands::{config_cmd, generate, list, switch};
 use config::Config;
 
 #[derive(Parser)]
@@ -35,31 +35,8 @@ enum Commands {
         project: Option<String>,
     },
 
-    /// 生成环境变量（输出到 stdout）
+    /// 生成环境变量
     Generate {
-        /// 指定前缀筛选
-        #[arg(short, long)]
-        prefix: Option<String>,
-
-        /// 指定服务名（可多次指定）
-        #[arg(short, long)]
-        service: Vec<String>,
-
-        /// 交互式选择服务
-        #[arg(long)]
-        select: bool,
-
-        /// 指定项目名（覆盖当前项目）
-        #[arg(long)]
-        project: Option<String>,
-
-        /// 输出格式：shell, env, json
-        #[arg(short, long, default_value = "shell")]
-        format: String,
-    },
-
-    /// 导出环境变量到文件
-    Export {
         /// 指定前缀筛选
         #[arg(short, long)]
         prefix: Option<String>,
@@ -185,47 +162,6 @@ fn main() -> Result<()> {
             service,
             select,
             project,
-            format,
-        } => {
-            let effective_prefix = prefix
-                .or_else(|| {
-                    project
-                        .as_ref()
-                        .and_then(|p| config.get_project_by_name(p))
-                        .map(|p| p.prefix.clone())
-                })
-                .or_else(|| config.get_current_project().map(|p| p.prefix.clone()));
-
-            // 获取服务列表
-            let services = if select {
-                // 交互式选择
-                let available = config.default_services.clone();
-                select_services(&available)?
-            } else if !service.is_empty() {
-                service
-            } else if let Some(project) = config.get_current_project() {
-                project.services.clone()
-            } else {
-                config.default_services.clone()
-            };
-
-            // 获取 master password
-            let master_password = get_master_password()?;
-            let master_password_opt = master_password.as_deref();
-
-            generate::generate_env(
-                master_password_opt,
-                effective_prefix.as_deref(),
-                services,
-                &format,
-            )?;
-        }
-
-        Commands::Export {
-            prefix,
-            service,
-            select,
-            project,
             config: config_file,
             output,
             format,
@@ -264,7 +200,7 @@ fn main() -> Result<()> {
             let master_password = get_master_password()?;
             let master_password_opt = master_password.as_deref();
 
-            export::export_env(
+            generate::generate_env(
                 master_password_opt,
                 effective_prefix.as_deref(),
                 services,
