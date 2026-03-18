@@ -1,117 +1,75 @@
-use anyhow::{anyhow, Result};
-use clap::Parser;
+use anyhow::Result;
 use crate::config::Config;
-use std::fs;
-use std::path::PathBuf;
 
-#[derive(Parser, Debug)]
-pub enum ConfigCommands {
-    /// 设置配置项
-    Set {
-        /// 配置项名称
-        key: String,
-        /// 配置项值
-        value: String,
-    },
-    /// 显示当前配置
-    Show,
-    /// 初始化配置文件
-    Init,
+pub fn show_config(config: &Config) -> Result<()> {
+    println!("当前配置:");
+    println!();
+    if let Some(ref bw) = config.bitwarden {
+        if bw.master_password.is_some() {
+            println!("  master_password: ********");
+        } else {
+            println!("  master_password: (未设置，将在运行时提示输入)");
+        }
+    } else {
+        println!("  master_password: (未设置，将在运行时提示输入)");
+    }
+    println!("  default_format: {:?}", config.default_format);
+    println!();
+    println!("  项目: {} 个", config.projects.len());
+    if let Some(ref current) = config.current_project {
+        println!("  当前项目: {}", current);
+    } else {
+        println!("  当前项目: (未选择)");
+    }
+    Ok(())
 }
 
-pub fn config_command(cmd: ConfigCommands, config: &mut Config) -> Result<()> {
-    match cmd {
-        ConfigCommands::Set { key, value } => {
-            match key.as_str() {
-                "master_password" => {
-                    config.set_master_password(value)?;
-                    println!("已设置 master_password");
-                }
-                "default_prefix" => {
-                    config.default_prefix = Some(value);
-                    config.save()?;
-                    println!("已设置 default_prefix");
-                }
-                "default_format" => {
-                    config.default_format = Some(value);
-                    config.save()?;
-                    println!("已设置 default_format");
-                }
-                _ => {
-                    return Err(anyhow!("未知的配置项: {}", key));
-                }
-            }
-        }
-        ConfigCommands::Show => {
-            println!("当前配置:");
-            println!();
-            if let Some(ref bw) = config.bitwarden {
-                if bw.master_password.is_some() {
-                    println!("  master_password: ********");
-                } else {
-                    println!("  master_password: (未设置，将在运行时提示输入)");
-                }
-            } else {
-                println!("  master_password: (未设置，将在运行时提示输入)");
-            }
-            println!("  default_prefix: {:?}", config.default_prefix);
-            println!("  default_format: {:?}", config.default_format);
-            println!("  default_services: {:?}", config.default_services);
-            println!("  projects: {} 个项目", config.projects.len());
-            if let Some(ref current) = config.current_project {
-                println!("  current_project: {}", current);
-            }
-        }
-        ConfigCommands::Init => {
-            // 创建默认配置文件
-            let default_config = r#"# Bitwarden API Key 配置
+pub fn init_config() -> Result<()> {
+    let default_config = r#"# Bitwarden 配置
 bitwarden:
-  api_key: "your-api-key"
-  api_secret: "your-api-secret"
-
-# 默认前缀
-default_prefix: "dev"
+  master_password: "your-master-password"
 
 # 默认输出格式 (shell, env, json)
 default_format: "shell"
 
-# 默认服务列表
-default_services:
-  - mysql
-  - redis
-  - github
-
-# 项目/目录配置
-projects:
-  - name: "dev/project1"
-    prefix: "dev"
-    services:
-      - mysql
-      - redis
-  - name: "prod/api"
-    prefix: "prod"
-    services:
-      - mysql
-      - postgres
-
-# 当前选中的项目（由 switch 命令自动更新）
-# current_project: "dev/project1"
+# 项目配置
+# projects:
+#   - name: "dev"
+#     prefix: "dev"
+#     services:
+#       - mysql
+#       - redis
+#       - github
 "#;
 
-            let config_path = dirs::home_dir()
-                .unwrap_or_else(|| PathBuf::from("."))
-                .join(".bwenv")
-                .join("config.yaml");
+    let config_path = dirs::home_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join(".bwenv")
+        .join("config.yaml");
 
-            if let Some(parent) = config_path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-
-            fs::write(&config_path, default_config)?;
-            println!("配置文件已创建: {}", config_path.display());
-            println!("请编辑配置文件并设置您的 API Key");
-        }
+    if let Some(parent) = config_path.parent() {
+        std::fs::create_dir_all(parent)?;
     }
+    std::fs::write(&config_path, default_config)?;
+    println!("配置文件已创建: {}", config_path.display());
+    Ok(())
+}
 
+pub fn list_projects(config: &Config) -> Result<()> {
+    if config.projects.is_empty() {
+        println!("暂无项目，请使用 'bwenv project add' 添加");
+        return Ok(());
+    }
+    println!("项目列表:\n");
+    for (i, project) in config.projects.iter().enumerate() {
+        let marker = if config.current_project.as_deref() == Some(&project.name) {
+            "*"
+        } else {
+            " "
+        };
+        let prefix_display = if project.prefix.is_empty() { "(无)" } else { &project.prefix };
+        println!("{} {}. {} (前缀: {}, 服务: {:?})",
+            marker, i + 1, project.name, prefix_display, project.services);
+    }
     Ok(())
 }

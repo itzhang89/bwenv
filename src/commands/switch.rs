@@ -33,23 +33,3 @@ pub fn switch_command(project_name: Option<String>, config: &mut Config) -> Resu
     }
     Ok(())
 }
-
-/// 列出已配置的项目
-pub fn list_projects(config: &Config) -> Result<()> {
-    if config.projects.is_empty() {
-        println!("未配置任何项目");
-        return Ok(());
-    }
-
-    println!("已配置的项目:\n");
-    for (i, project) in config.projects.iter().enumerate() {
-        let marker = if config.current_project.as_deref() == Some(&project.name) {
-            "*"
-        } else {
-            " "
-        };
-        println!("{} {}. {} (前缀: {}, 服务: {:?})", marker, i + 1, project.name, project.prefix, project.services);
-    }
-
-    Ok(())
-}

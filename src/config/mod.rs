@@ -9,8 +9,6 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct BitwardenConfig {
-    pub api_key: Option<String>,
-    pub api_secret: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub master_password: Option<String>,
 }
@@ -18,150 +16,143 @@ pub struct BitwardenConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub bitwarden: Option<BitwardenConfig>,
-    #[serde(rename = "default_prefix")]
-    pub default_prefix: Option<String>,
+    /// 默认输出格式: shell, env, json
     #[serde(rename = "default_format")]
     pub default_format: Option<String>,
-    #[serde(rename = "default_services")]
-    pub default_services: Vec<String>,
+    /// 项目配置列表
     pub projects: Vec<Project>,
+    /// 当前选中的项目名称
     #[serde(rename = "current_project")]
     pub current_project: Option<String>,
-    #[serde(rename = "config_file")]
-    pub config_file: Option<String>,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             bitwarden: None,
-            default_prefix: None,
             default_format: Some("shell".to_string()),
-            default_services: Vec::new(),
             projects: Vec::new(),
             current_project: None,
-            config_file: None,
         }
     }
 }
 
 impl Config {
-    /// 加载配置，优先级：命令行 > 环境变量 > ~/.bwenv/config.yaml
+    /// 加载配置
     pub fn load() -> Result<Self> {
-        // 1. 加载 ~/.bwenv/config.yaml
-        let file_config = Self::load_from_file();
-
-        // 2. 加载环境变量覆盖
-        let env_config = Self::load_from_env();
-
-        // 3. 合并配置（环境变量优先）
-        let mut config = file_config.unwrap_or_default();
-
-        if let Some(env) = env_config {
-            if let Some(bitwarden) = env.bitwarden {
-                if let Some(api_key) = bitwarden.api_key {
-                    if config.bitwarden.is_none() {
-                        config.bitwarden = Some(BitwardenConfig::default());
-                    }
-                    config.bitwarden.as_mut().unwrap().api_key = Some(api_key);
-                }
-                if let Some(api_secret) = bitwarden.api_secret {
-                    if config.bitwarden.is_none() {
-                        config.bitwarden = Some(BitwardenConfig::default());
-                    }
-                    config.bitwarden.as_mut().unwrap().api_secret = Some(api_secret);
-                }
-            }
-            if let Some(prefix) = env.default_prefix {
-                config.default_prefix = Some(prefix);
-            }
-            if let Some(format) = env.default_format {
-                config.default_format = Some(format);
-            }
-        }
-
-        Ok(config)
+        Self::load_from_file()
     }
 
     fn load_from_file() -> Result<Self> {
         let path = Self::config_path();
-        if path.exists() {
+        if path.exists() && path.is_file() {
             let content = fs::read_to_string(&path)?;
-            let config: Config = serde_yaml::from_str(&content)?;
-            Ok(config)
+
+            // 尝试解析为 Config（新版本 ~/.bwenv）
+            if let Ok(config) = serde_yaml::from_str::<Config>(&content) {
+                return Ok(config);
+            }
+
+            // 如果失败，尝试解析为 Vec<Project>（旧版 ~/.bwenv/projects）
+            if let Ok(projects) = serde_yaml::from_str::<Vec<Project>>(&content) {
+                return Ok(Config {
+                    projects,
+                    ..Default::default()
+                });
+            }
+
+            Err(anyhow!("无法解析配置文件"))
         } else {
             Ok(Config::default())
         }
     }
 
-    fn load_from_env() -> Option<Self> {
-        let api_key = std::env::var("BWENV_API_KEY").ok();
-        let api_secret = std::env::var("BWENV_API_SECRET").ok();
-        let default_prefix = std::env::var("BWENV_PREFIX").ok();
-        let default_format = std::env::var("BWENV_FORMAT").ok();
-        let config_file = std::env::var("BWENV_CONFIG").ok();
+    fn config_path() -> PathBuf {
+        // 优先使用 ~/.bwenv 文件（新版本），兼容旧版的 ~/.bwenv/projects
+        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+        let bwenv_dir = home.join(".bwenv");
+        let new_path = home.join(".bwenv");
+        let old_path = bwenv_dir.join("projects");
 
-        if api_key.is_none()
-            && api_secret.is_none()
-            && default_prefix.is_none()
-            && default_format.is_none()
-            && config_file.is_none()
-        {
-            return None;
+        if new_path.is_file() {
+            new_path
+        } else if old_path.is_file() {
+            old_path
+        } else if bwenv_dir.is_dir() {
+            // 旧版目录结构：~/.bwenv/config.yaml
+            bwenv_dir.join("config.yaml")
+        } else {
+            new_path // 默认返回新路径
         }
-
-        Some(Config {
-            bitwarden: if api_key.is_some() || api_secret.is_some() {
-                Some(BitwardenConfig {
-                    api_key,
-                    api_secret,
-                    master_password: None,
-                })
-            } else {
-                None
-            },
-            default_prefix,
-            default_format,
-            default_services: Vec::new(),
-            projects: Vec::new(),
-            current_project: None,
-            config_file,
-        })
     }
 
-    fn config_path() -> PathBuf {
-        dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join(".bwenv")
-            .join("config.yaml")
+    /// 从当前目录或父目录查找 .bwenv 文件
+    pub fn find_bwenv_in_dir() -> Option<PathBuf> {
+        let current_dir = std::env::current_dir().ok()?;
+        let mut path = current_dir.as_path();
+
+        // 向上查找最多 5 层
+        for _ in 0..5 {
+            let bwenv_path = path.join(".bwenv");
+            // 只查找文件，不查找目录
+            if bwenv_path.is_file() {
+                return Some(bwenv_path);
+            }
+            if let Some(parent) = path.parent() {
+                path = parent;
+            } else {
+                break;
+            }
+        }
+        None
+    }
+
+    /// 从 .bwenv 文件加载项目配置
+    pub fn load_project_from_dir() -> Result<Option<Project>> {
+        if let Some(path) = Self::find_bwenv_in_dir() {
+            let content = fs::read_to_string(&path)?;
+            let project: Project = serde_yaml::from_str(&content)?;
+            Ok(Some(project))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// 从文件加载项目配置
+    pub fn load_projects_from_file(path: &str) -> Result<Vec<Project>> {
+        let content = fs::read_to_string(path)?;
+        // 尝试解析为 Vec<Project>，如果失败则尝试解析为单个 Project
+        if let Ok(projects) = serde_yaml::from_str::<Vec<Project>>(&content) {
+            Ok(projects)
+        } else if let Ok(project) = serde_yaml::from_str::<Project>(&content) {
+            Ok(vec![project])
+        } else {
+            Err(anyhow!("无法解析项目配置文件"))
+        }
     }
 
     /// 保存配置到文件
     pub fn save(&self) -> Result<()> {
-        let path = Self::config_path();
+        // 保存到 ~/.bwenv（新版本）
+        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+        let bwenv_path = home.join(".bwenv");
 
-        // 确保目录存在
+        // 如果 ~/.bwenv 是目录（旧版），保存到 config.yaml
+        let path = if bwenv_path.is_dir() {
+            bwenv_path.join("config.yaml")
+        } else {
+            bwenv_path
+        };
+
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-
         let content = serde_yaml::to_string(&self)?;
         fs::write(&path, content)?;
         Ok(())
     }
 
-    /// 切换当前项目
-    pub fn set_current_project(&mut self, project_name: &str) -> Result<()> {
-        // 验证项目是否存在
-        if !self.projects.iter().any(|p| p.name == project_name) {
-            return Err(anyhow!("项目 '{}' 不存在", project_name));
-        }
-        self.current_project = Some(project_name.to_string());
-        self.save()?;
-        Ok(())
-    }
-
-    /// 获取当前项目的配置
+    /// 获取当前项目配置
     pub fn get_current_project(&self) -> Option<&Project> {
         self.current_project
             .as_ref()
@@ -173,47 +164,18 @@ impl Config {
         self.projects.iter().find(|p| p.name == name)
     }
 
-    /// 获取 API Key (保留以备后用)
-    #[allow(dead_code)]
-    pub fn get_api_key(&self) -> Option<&str> {
-        self.bitwarden.as_ref().and_then(|b| b.api_key.as_deref())
+    /// 切换当前项目
+    pub fn set_current_project(&mut self, project_name: &str) -> Result<()> {
+        if !self.projects.iter().any(|p| p.name == project_name) {
+            return Err(anyhow!("项目 '{}' 不存在", project_name));
+        }
+        self.current_project = Some(project_name.to_string());
+        self.save()
     }
 
-    /// 获取 API Secret (保留以备后用)
-    #[allow(dead_code)]
-    pub fn get_api_secret(&self) -> Option<&str> {
-        self.bitwarden.as_ref().and_then(|b| b.api_secret.as_deref())
-    }
-
-    /// 获取 Master Password (如果未设置，返回 None)
+    /// 获取 Master Password
     pub fn get_master_password(&self) -> Option<&str> {
         self.bitwarden.as_ref().and_then(|b| b.master_password.as_deref())
-    }
-
-    /// 检查是否设置了 Master Password
-    #[allow(dead_code)]
-    pub fn has_master_password(&self) -> bool {
-        self.get_master_password().is_some()
-    }
-
-    /// 设置 API Key (保留以备后用)
-    #[allow(dead_code)]
-    pub fn set_api_key(&mut self, api_key: String) -> Result<()> {
-        if self.bitwarden.is_none() {
-            self.bitwarden = Some(BitwardenConfig::default());
-        }
-        self.bitwarden.as_mut().unwrap().api_key = Some(api_key);
-        self.save()
-    }
-
-    /// 设置 API Secret (保留以备后用)
-    #[allow(dead_code)]
-    pub fn set_api_secret(&mut self, api_secret: String) -> Result<()> {
-        if self.bitwarden.is_none() {
-            self.bitwarden = Some(BitwardenConfig::default());
-        }
-        self.bitwarden.as_mut().unwrap().api_secret = Some(api_secret);
-        self.save()
     }
 
     /// 设置 Master Password
@@ -231,6 +193,34 @@ impl Config {
         self.default_format
             .as_deref()
             .unwrap_or("shell")
+    }
+
+    /// 设置默认输出格式
+    pub fn set_default_format(&mut self, format: String) -> Result<()> {
+        self.default_format = Some(format);
+        self.save()
+    }
+
+    /// 添加项目
+    pub fn add_project(&mut self, project: Project) -> Result<()> {
+        if self.projects.iter().any(|p| p.name == project.name) {
+            return Err(anyhow!("项目 '{}' 已存在", project.name));
+        }
+        self.projects.push(project);
+        self.save()
+    }
+
+    /// 删除项目
+    pub fn remove_project(&mut self, name: &str) -> Result<()> {
+        let initial_len = self.projects.len();
+        self.projects.retain(|p| p.name != name);
+        if self.projects.len() == initial_len {
+            return Err(anyhow!("项目 '{}' 不存在", name));
+        }
+        if self.current_project.as_deref() == Some(name) {
+            self.current_project = None;
+        }
+        self.save()
     }
 }
 
