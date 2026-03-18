@@ -144,11 +144,32 @@ fn remove_from_claude_settings(project_name: &str) -> Result<usize> {
         }
     }
 
-    // 清理元数据
+    // 清理元数据：删除当前项目的记录，并移除所有空数组
     if let Some(metadata) = settings_map.get_mut("_bwenv") {
         if let serde_json::Value::Object(metadata_map) = metadata {
-            if let Some(project_vars) = metadata_map.get_mut(project_name) {
-                *project_vars = serde_json::Value::Array(vec![]);
+            // 删除当前项目
+            metadata_map.remove(project_name);
+
+            // 移除所有空数组的键
+            let empty_keys: Vec<String> = metadata_map
+                .iter()
+                .filter(|(_, v)| {
+                    if let serde_json::Value::Array(arr) = v {
+                        arr.is_empty()
+                    } else {
+                        false
+                    }
+                })
+                .map(|(k, _)| k.clone())
+                .collect();
+
+            for key in empty_keys {
+                metadata_map.remove(&key);
+            }
+
+            // 如果 _bwenv 变成空对象，则删除整个字段
+            if metadata_map.is_empty() {
+                settings_map.remove("_bwenv");
             }
         }
     }
