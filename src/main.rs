@@ -127,10 +127,6 @@ enum ProjectCommands {
     Remove {
         name: String,
     },
-    /// 设置当前项目
-    Use {
-        name: String,
-    },
 }
 
 #[derive(Subcommand)]
@@ -293,10 +289,6 @@ fn main() -> Result<()> {
                 Some(ProjectCommands::Remove { name }) => {
                     config.remove_project(&name)?;
                     println!("已删除项目: {}", name);
-                }
-                Some(ProjectCommands::Use { name }) => {
-                    config.set_current_project(&name)?;
-                    println!("已切换到项目: {}", name);
                 }
                 None => {
                     config_cmd::list_projects(&config)?;
