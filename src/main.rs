@@ -142,7 +142,7 @@ enum ConfigCommands {
     },
     /// Output shell wrapper function (add to ~/.zshrc or ~/.bashrc)
     ShellInit {
-        /// Shell type: zsh or bash (default: zsh)
+        /// Shell type: zsh or bash (auto-detect if not specified)
         shell: Option<String>,
     },
 }
