@@ -98,6 +98,48 @@ MYSQL_PASSWORD=secret123
 
 ## Usage
 
+### Shell Integration
+
+You can directly load credentials into your current shell session:
+
+```bash
+# Using eval (recommended)
+eval "$(bwenv)"
+
+# Or using process substitution
+source <(bwenv)
+
+# Load specific project
+eval "$(bwenv use dev)"
+
+# Load with filters
+eval "$(bwenv -p developer -s mysql)"
+```
+
+#### Permanent Shell Setup
+
+**Zsh** (add to `~/.zshrc`):
+
+```zsh
+# Load bwenv credentials on shell startup
+eval "$(bwenv use dev)"
+
+# Or with auto-detection from .bwenv file
+eval "$(bwenv)"
+```
+
+**Bash** (add to `~/.bashrc` or `~/.bash_profile`):
+
+```bash
+# Load bwenv credentials on shell startup
+eval "$(bwenv use dev)"
+
+# Or with auto-detection from .bwenv file
+eval "$(bwenv)"
+```
+
+> **Note**: This will prompt for your Bitwarden master password if not already unlocked. Consider using `bw unlock --persist` first for faster startup.
+
 ### Commands
 
 ```bash

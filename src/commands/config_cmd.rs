@@ -74,7 +74,7 @@ pub fn shell_init(shell: Option<&str>) -> Result<()> {
 }
 
 const ZSH_WRAPPER: &str = r#"# bwenv shell wrapper - add to your ~/.zshrc
-# Run: echo 'source <(bwenv shell-init)' >> ~/.zshrc
+# Run: echo 'source <(bwenv config shell-init)' >> ~/.zshrc
 #
 # 'bwenv' (no args) - will eval output (auto-export env vars)
 # 'bwenv <subcommand>' - works normally
@@ -89,7 +89,7 @@ bwenv() {
 "#;
 
 const BASH_WRAPPER: &str = r#"# bwenv shell wrapper - add to your ~/.bashrc
-# Run: echo 'source <(bwenv shell-init bash)' >> ~/.bashrc
+# Run: echo 'source <(bwenv config shell-init bash)' >> ~/.bashrc
 #
 # 'bwenv' (no args) - will eval output (auto-export env vars)
 # 'bwenv <subcommand>' - works normally
