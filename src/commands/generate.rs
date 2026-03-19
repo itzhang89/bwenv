@@ -112,19 +112,11 @@ fn remove_from_claude_settings(project_name: &str) -> Result<usize> {
     };
 
     // Get var list to remove
-    let vars_to_remove: Vec<String> = if let Some(metadata) = settings_map.get("_bwenv") {
-        if let serde_json::Value::Object(metadata_map) = metadata {
-            if let Some(project_vars) = metadata_map.get(project_name) {
-                if let serde_json::Value::Array(arr) = project_vars {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                        .collect()
-                } else {
-                    vec![]
-                }
-            } else {
-                vec![]
-            }
+    let vars_to_remove: Vec<String> = if let Some(serde_json::Value::Object(metadata_map)) = settings_map.get("_bwenv") {
+        if let Some(serde_json::Value::Array(arr)) = metadata_map.get(project_name) {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
         } else {
             vec![]
         }
@@ -134,19 +126,16 @@ fn remove_from_claude_settings(project_name: &str) -> Result<usize> {
 
     // Remove environment variables
     let mut removed_count = 0;
-    if let Some(env) = settings_map.get_mut("env") {
-        if let serde_json::Value::Object(env_map) = env {
-            for key in &vars_to_remove {
-                if env_map.remove(key).is_some() {
-                    removed_count += 1;
-                }
+    if let Some(serde_json::Value::Object(env_map)) = settings_map.get_mut("env") {
+        for key in &vars_to_remove {
+            if env_map.remove(key).is_some() {
+                removed_count += 1;
             }
         }
     }
 
     // Clean up metadata: delete current project record and remove all empty arrays
-    if let Some(metadata) = settings_map.get_mut("_bwenv") {
-        if let serde_json::Value::Object(metadata_map) = metadata {
+    if let Some(serde_json::Value::Object(metadata_map)) = settings_map.get_mut("_bwenv") {
             // Delete current project
             metadata_map.remove(project_name);
 
@@ -171,7 +160,6 @@ fn remove_from_claude_settings(project_name: &str) -> Result<usize> {
             if metadata_map.is_empty() {
                 settings_map.remove("_bwenv");
             }
-        }
     }
 
     let json_str = serde_json::to_string_pretty(&settings)?;

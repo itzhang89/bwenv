@@ -63,15 +63,13 @@ pub fn generate_env_key(service_name: &str, field_name: &str) -> String {
     // Convert service name to uppercase with underscores
     let service_key = service_name
         .to_uppercase()
-        .replace('-', "_")
-        .replace(' ', "_");
+        .replace(['-', ' '], "_");
 
     if suffix.is_empty() {
         // If type cannot be identified, use original field name
         let field_key = field_name
             .to_uppercase()
-            .replace('-', "_")
-            .replace(' ', "_");
+            .replace(['-', ' '], "_");
         format!("{}_{}", service_key, field_key)
     } else {
         format!("{}_{}", service_key, suffix)
