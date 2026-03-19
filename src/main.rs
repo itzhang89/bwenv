@@ -140,6 +140,11 @@ enum ConfigCommands {
         key: String,
         value: String,
     },
+    /// Output shell wrapper function (add to ~/.zshrc or ~/.bashrc)
+    ShellInit {
+        /// Shell type: zsh or bash (default: zsh)
+        shell: Option<String>,
+    },
 }
 
 fn get_master_password() -> Result<Option<String>> {
@@ -330,6 +335,9 @@ fn main() -> Result<()> {
                             return Err(anyhow!("Unknown config key: {}", key));
                         }
                     }
+                }
+                Some(ConfigCommands::ShellInit { shell }) => {
+                    config_cmd::shell_init(shell.as_deref())?;
                 }
                 None => {
                     config_cmd::show_config(&config)?;

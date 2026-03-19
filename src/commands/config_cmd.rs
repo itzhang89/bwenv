@@ -55,6 +55,54 @@ default_format: "shell"
     Ok(())
 }
 
+/// Output shell wrapper function for bwenv
+pub fn shell_init(shell: Option<&str>) -> Result<()> {
+    let shell = shell.unwrap_or("zsh");
+
+    match shell {
+        "zsh" => {
+            println!("{}", ZSH_WRAPPER);
+        }
+        "bash" => {
+            println!("{}", BASH_WRAPPER);
+        }
+        _ => {
+            return Err(anyhow::anyhow!("Unsupported shell: {}. Use 'zsh' or 'bash'", shell));
+        }
+    }
+    Ok(())
+}
+
+const ZSH_WRAPPER: &str = r#"# bwenv shell wrapper - add to your ~/.zshrc
+# Run: echo 'source <(bwenv shell-init)' >> ~/.zshrc
+#
+# 'bwenv' (no args) - will eval output (auto-export env vars)
+# 'bwenv <subcommand>' - works normally
+
+bwenv() {
+    if [ -z "$1" ]; then
+        eval $(command bwenv)
+    else
+        command bwenv "$@"
+    fi
+}
+"#;
+
+const BASH_WRAPPER: &str = r#"# bwenv shell wrapper - add to your ~/.bashrc
+# Run: echo 'source <(bwenv shell-init bash)' >> ~/.bashrc
+#
+# 'bwenv' (no args) - will eval output (auto-export env vars)
+# 'bwenv <subcommand>' - works normally
+
+bwenv() {
+    if [ -z "$1" ]; then
+        eval $(command bwenv)
+    else
+        command bwenv "$@"
+    fi
+}
+"#;
+
 pub fn list_projects(config: &Config) -> Result<()> {
     if config.projects.is_empty() {
         println!("No projects. Use 'bwenv project add' to add one");
