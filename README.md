@@ -39,11 +39,11 @@ The tool uses Bitwarden's **Folder** feature to organize credentials. The folder
 
 ```
 Bitwarden Vault
-├── developer/          (Folder)
+├── developer/         (Folder)
 │   ├── mysql          (Login item)
 │   ├── redis          (Login item)
 │   └── github         (Login item)
-├── thoughtworks/      (Folder)
+├── project1/          (Folder)
 │   ├── aliyun         (Login item)
 │   └── aws            (Login item)
 └── database/          (Folder)
@@ -64,7 +64,7 @@ In `~/.bwenv`, define projects with:
     - github
 
 - name: "prod"
-  prefix: "thoughtworks"
+  prefix: "project1"
   services:
     - aliyun
     - aws
@@ -207,3 +207,69 @@ bwenv use prod -o .env
 export BW_MASTER_PASSWORD="$BW_MASTER_PASSWORD"
 bwenv use prod -f json > secrets.json
 ```
+
+## Best Practices
+
+### Security
+
+- **Never commit secrets**: Add `.env`, `.claude/settings.local.json`, and any local config files to `.gitignore`
+  ```gitignore
+  # .gitignore
+  .env
+  .env.*
+  .claude/settings.local.json
+  .bwenv
+  ```
+
+- **Use session timeout**: Bitwarden CLI locks after inactivity. Use `bw lock` in longer workflows:
+  ```bash
+  bw unlock --persist # Remember session for this terminal
+  ```
+
+- **Prefer environment variable for master password**: More secure than storing in config file:
+  ```bash
+  export BW_MASTER_PASSWORD="your-master-password"
+  bwenv use dev
+  ```
+
+### Project Organization
+
+- **Use descriptive folder names**: Match Bitwarden folders to your project/environment names
+  ```
+  Bitwarden Folders: dev, staging, prod, personal
+  ```
+
+- **Use consistent naming**: Keep service names lowercase with underscores:
+  ```yaml
+  services:
+    - mysql_db      # Good
+    - mysql         # Also good
+    - MySQL         # Avoid
+  ```
+
+- **Leverage per-project `.bwenv` files**: Store project-specific config in each project directory for auto-detection
+
+### Workflow
+
+- **Quick lookup**: Use `bwenv list` to verify Bitwarden items before exporting
+- **Incremental export**: Filter by service when you only need specific credentials:
+  ```bash
+  bwenv -s mysql          # Only MySQL credentials
+  bwenv -s mysql,redis    # Multiple services
+  ```
+- **Validate before use**: Preview output before writing to files
+
+### Claude Code Integration
+
+- **Keep credentials synced**: After updating Bitwarden, refresh Claude Code settings:
+  ```bash
+  bwenv -p developer -s mysql -o claude
+  ```
+
+- **Track which vars are managed**: The `_bwenv` field in settings shows which variables come from bwenv
+
+### Maintenance
+
+- **Regular cleanup**: Remove unused items from Bitwarden folders
+- **Audit access**: Periodically check which projects have `.bwenv` files in your directories
+- **Test in dev first**: Always test credential export in development before staging/production
