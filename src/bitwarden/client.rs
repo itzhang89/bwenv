@@ -41,6 +41,26 @@ impl BitwardenClient {
         Ok(())
     }
 
+    /// Clear session file
+    fn clear_session() {
+        let path = Self::session_path();
+        if path.exists() {
+            let _ = fs::remove_file(&path);
+        }
+    }
+
+    /// Check if error indicates invalid/expired session
+    fn is_session_invalid_error(error: &str) -> bool {
+        let lower = error.to_lowercase();
+        lower.contains("empty response")
+            || lower.contains("not json")
+            || lower.contains("session")
+            || lower.contains("unauthorized")
+            || lower.contains("not authorized")
+            || lower.contains("bw_errorresponse")
+            || lower.contains("too many login requests")
+    }
+
     /// Check if session is valid
     fn check_session(&mut self) -> Result<bool> {
         if let Some(ref session) = self.session_key {
@@ -135,7 +155,23 @@ impl BitwardenClient {
             return Err(anyhow!("Failed to get items: {}", stderr));
         }
 
-        let items: Vec<BitwardenItem> = serde_json::from_slice(&output.stdout)?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if stdout.trim().is_empty() {
+            return Err(anyhow!("Empty response from Bitwarden. Is the vault locked or empty?"));
+        }
+
+        // Check if response looks like valid JSON before parsing
+        let trimmed = stdout.trim();
+        if !trimmed.starts_with('[') && !trimmed.starts_with('{') {
+            return Err(anyhow!(
+                "Invalid response from Bitwarden (not JSON): {}. Is the vault locked?",
+                trimmed.chars().take(200).collect::<String>()
+            ));
+        }
+
+        let items: Vec<BitwardenItem> = serde_json::from_slice(&output.stdout).map_err(|e| {
+            anyhow!("Failed to parse items JSON: {}. Response: {}", e, trimmed.chars().take(500).collect::<String>())
+        })?;
         Ok(items)
     }
 
@@ -152,7 +188,23 @@ impl BitwardenClient {
             return Err(anyhow!("Failed to get folders: {}", stderr));
         }
 
-        let folders: Vec<BitwardenFolder> = serde_json::from_slice(&output.stdout)?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if stdout.trim().is_empty() {
+            return Err(anyhow!("Empty response from Bitwarden. Is the vault locked or empty?"));
+        }
+
+        // Check if response looks like valid JSON before parsing
+        let trimmed = stdout.trim();
+        if !trimmed.starts_with('[') && !trimmed.starts_with('{') {
+            return Err(anyhow!(
+                "Invalid response from Bitwarden (not JSON): {}. Is the vault locked?",
+                trimmed.chars().take(200).collect::<String>()
+            ));
+        }
+
+        let folders: Vec<BitwardenFolder> = serde_json::from_slice(&output.stdout).map_err(|e| {
+            anyhow!("Failed to parse folders JSON: {}. Response: {}", e, trimmed.chars().take(500).collect::<String>())
+        })?;
         Ok(folders)
     }
 
@@ -163,8 +215,49 @@ impl BitwardenClient {
         folder_prefix: Option<&str>,
         service_name: Option<&str>,
     ) -> Result<Vec<BitwardenItem>> {
-        let items = self.list_items(master_password)?;
-        let folders = self.list_folders(master_password)?;
+        self.list_items_by_folder_and_service_impl(master_password, folder_prefix, service_name, true)
+    }
+
+    /// Internal implementation with retry support
+    fn list_items_by_folder_and_service_impl(
+        &mut self,
+        master_password: Option<&str>,
+        folder_prefix: Option<&str>,
+        service_name: Option<&str>,
+        is_retry: bool,
+    ) -> Result<Vec<BitwardenItem>> {
+        let items_result = self.list_items(master_password);
+        let folders_result = self.list_folders(master_password);
+
+        // Check if either call failed with session-related error
+        let items_err_str = items_result.as_ref().err().map(|e| e.to_string()).unwrap_or_default();
+        let folders_err_str = folders_result.as_ref().err().map(|e| e.to_string()).unwrap_or_default();
+
+        // If failed due to session issue and we haven't retried yet, try re-unlocking
+        if (Self::is_session_invalid_error(&items_err_str) || Self::is_session_invalid_error(&folders_err_str))
+            && !is_retry
+            && master_password.is_some()
+        {
+            // Clear invalid session and re-unlock
+            Self::clear_session();
+            self.session_key = None;
+
+            // Re-unlock with master password
+            if let Err(e) = self.unlock(master_password.unwrap()) {
+                return Err(anyhow!("Session expired, re-unlock failed: {}", e));
+            }
+
+            // Retry the operation once
+            return self.list_items_by_folder_and_service_impl(
+                master_password,
+                folder_prefix,
+                service_name,
+                true,
+            );
+        }
+
+        let items = items_result?;
+        let folders = folders_result?;
 
         // Build folder_id -> folder_name mapping
         let folder_map: std::collections::HashMap<String, String> = folders
