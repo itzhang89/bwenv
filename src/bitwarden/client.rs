@@ -21,14 +21,36 @@ impl BitwardenClient {
             .join(".bwenv_session")
     }
 
-    /// Load cached session
+    /// Load cached session (trimmed; file may end with newline)
     fn load_session() -> Option<String> {
         let path = Self::session_path();
         if path.exists() {
-            fs::read_to_string(&path).ok()
+            fs::read_to_string(&path)
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
         } else {
             None
         }
+    }
+
+    /// True if `bw list items` accepts this session and returns non-empty JSON-like output.
+    /// Exit code alone is not enough: some failures still exit 0 with an empty stdout.
+    fn session_can_list_items(session: &str) -> Result<bool> {
+        let output = Command::new("bw")
+            .args(["list", "items", "--session", session])
+            .output()?;
+
+        if !output.status.success() {
+            return Ok(false);
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let trimmed = stdout.trim();
+        if trimmed.is_empty() {
+            return Ok(false);
+        }
+        Ok(trimmed.starts_with('[') || trimmed.starts_with('{'))
     }
 
     /// Save session to cache
@@ -61,28 +83,24 @@ impl BitwardenClient {
             || lower.contains("too many login requests")
     }
 
-    /// Check if session is valid
+    /// Check if session is valid (must actually list items with parseable-looking output).
     fn check_session(&mut self) -> Result<bool> {
         if let Some(ref session) = self.session_key {
-            let output = Command::new("bw")
-                .args(["list", "items", "--session", session])
-                .output()?;
-
-            if output.status.success() {
+            if Self::session_can_list_items(session)? {
                 return Ok(true);
             }
+            // In-memory session is stale
+            self.session_key = None;
         }
 
-        // Try to load cached session
+        // Try to load cached session from disk
         if let Some(session) = Self::load_session() {
-            let output = Command::new("bw")
-                .args(["list", "items", "--session", &session])
-                .output()?;
-
-            if output.status.success() {
+            if Self::session_can_list_items(&session)? {
                 self.session_key = Some(session);
                 return Ok(true);
             }
+            // Drop bad cache so later unlock writes a fresh key
+            Self::clear_session();
         }
 
         Ok(false)

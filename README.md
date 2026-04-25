@@ -73,6 +73,7 @@ In `~/.bwenv`, define projects with:
 ### Output Examples
 
 For a Bitwarden item like:
+
 - Folder: `developer`
 - Item name: `mysql`
 - Username: `admin`
@@ -220,9 +221,11 @@ When running `bwenv` in that directory or its subdirectories, the project will b
 
 ### Environment Variables
 
-| Variable | Description |
-|----------|-------------|
+
+| Variable             | Description               |
+| -------------------- | ------------------------- |
 | `BW_MASTER_PASSWORD` | Bitwarden master password |
+
 
 ## Examples
 
@@ -262,12 +265,10 @@ bwenv use prod -f json > secrets.json
   .claude/settings.local.json
   .bwenv
   ```
-
 - **Use session timeout**: Bitwarden CLI locks after inactivity. Use `bw lock` in longer workflows:
   ```bash
   bw unlock --persist # Remember session for this terminal
   ```
-
 - **Prefer environment variable for master password**: More secure than storing in config file:
   ```bash
   export BW_MASTER_PASSWORD="your-master-password"
@@ -280,7 +281,6 @@ bwenv use prod -f json > secrets.json
   ```
   Bitwarden Folders: dev, staging, prod, personal
   ```
-
 - **Use consistent naming**: Keep service names lowercase with underscores:
   ```yaml
   services:
@@ -288,7 +288,6 @@ bwenv use prod -f json > secrets.json
     - mysql         # Also good
     - MySQL         # Avoid
   ```
-
 - **Leverage per-project `.bwenv` files**: Store project-specific config in each project directory for auto-detection
 
 ### Workflow
@@ -307,7 +306,6 @@ bwenv use prod -f json > secrets.json
   ```bash
   bwenv -p developer -s mysql -o claude
   ```
-
 - **Track which vars are managed**: The `_bwenv` field in settings shows which variables come from bwenv
 
 ### Maintenance
@@ -315,3 +313,4 @@ bwenv use prod -f json > secrets.json
 - **Regular cleanup**: Remove unused items from Bitwarden folders
 - **Audit access**: Periodically check which projects have `.bwenv` files in your directories
 - **Test in dev first**: Always test credential export in development before staging/production
+
