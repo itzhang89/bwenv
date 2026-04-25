@@ -52,7 +52,7 @@ Bitwarden Vault
 
 ### Configuration Format
 
-In `~/.bwenv`, define projects with:
+In `~/.bwenv`, define projects as below. Unlocked vault session keys are cached in `~/.bwenv.d/session` (bwenv only; not used by the Bitwarden CLI).
 
 ```yaml
 # ~/.bwenv

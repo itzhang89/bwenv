@@ -14,24 +14,32 @@ impl BitwardenClient {
         Self { session_key: None }
     }
 
-    /// Get session cache file path
-    fn session_path() -> PathBuf {
+    /// bwenv data directory (session and future local state), e.g. `~/.bwenv.d`
+    fn data_dir() -> PathBuf {
         dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join(".bwenv_session")
+            .join(".bwenv.d")
+    }
+
+    /// Session cache file (bwenv-only; not used by the `bw` CLI)
+    fn session_path() -> PathBuf {
+        Self::data_dir().join("session")
+    }
+
+    fn read_session_file(path: &std::path::Path) -> Option<String> {
+        fs::read_to_string(path)
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
     }
 
     /// Load cached session (trimmed; file may end with newline)
     fn load_session() -> Option<String> {
         let path = Self::session_path();
         if path.exists() {
-            fs::read_to_string(&path)
-                .ok()
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-        } else {
-            None
+            return Self::read_session_file(&path);
         }
+        None
     }
 
     /// True if `bw list items` accepts this session and returns non-empty JSON-like output.
@@ -63,7 +71,7 @@ impl BitwardenClient {
         Ok(())
     }
 
-    /// Clear session file
+    /// Clear session file (new and legacy paths)
     fn clear_session() {
         let path = Self::session_path();
         if path.exists() {
