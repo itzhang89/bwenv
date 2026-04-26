@@ -1,70 +1,64 @@
 # bwenv - Bitwarden to Environment Variables Tool
 
-A CLI tool to read credentials from Bitwarden vault and convert them to environment variables.
+Read credentials from your [Bitwarden](https://bitwarden.com/) vault via the [`bw`](https://github.com/bitwarden/clients) CLI and print **`export ...`** lines (or `.env` / JSON) for your shell and tools.
 
-## Installation
-
-### Prebuilt binary (GitHub Releases)
-
-1. On GitHub, open this repository’s **Releases** page (`https://github.com/<owner>/<repo>/releases`) and download the asset for your platform:
-
-| Asset suffix | Platform |
-|--------------|----------|
-| `linux-x64` | Linux x86_64 (glibc) |
-| `windows-x64` | Windows x86_64 (`.zip` includes `bwenv.exe`) |
-| `darwin-arm64` | macOS Apple Silicon (arm64) |
-| `darwin-x64` | macOS Intel (x64) |
-
-2. **Verify integrity (optional):** for each `bwenv-…-.tar.gz` or `.zip`, compare the `SHA256` in the matching `.sha256` file. Example (macOS/Linux):
-
-```bash
-shasum -a 256 -c bwenv-0.1.0-linux-x64.tar.gz.sha256
-```
-
-3. **Install:**
-
-**macOS / Linux (from `.tar.gz`):**
-
-```bash
-tar -xzf bwenv-0.1.0-linux-x64.tar.gz   # contains a single binary named bwenv
-chmod +x bwenv
-sudo mv bwenv /usr/local/bin/           # or another directory on your $PATH
-```
-
-**Windows (from `.zip`):** unzip, then add the folder that contains `bwenv.exe` to your PATH, or copy `bwenv.exe` to a directory already on PATH.
-
-### Build from source (Rust / Cargo)
-
-```bash
-# Clone the project
-git clone <repo-url>
-cd bwenv
-
-# Build
-cargo build --release
-
-# Install to PATH
-cp target/release/bwenv /usr/local/bin/
-```
-
-### Releasing a new version (maintainers)
-
-Releases are built by [`.github/workflows/release.yml`](.github/workflows/release.yml) when a **SemVer** tag is pushed: `vMAJOR.MINOR.PATCH` (e.g. `v0.1.0`).
-
-1. Set `version` in `Cargo.toml` to match the version you will tag (e.g. `0.1.0`).
-2. Commit, then tag and push the tag (not only `main`):
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-The workflow checks that `Cargo.toml`’s `version` equals the tag without the leading `v`, then builds and publishes the GitHub Release with binaries. If the check fails, fix the version, commit, and retag.
+**Repository:** [github.com/itzhang89/bwenv](https://github.com/itzhang89/bwenv)
 
 ## Requirements
 
-- [Bitwarden CLI](https://github.com/bitwarden/clients/releases) (`bw`) must be installed
-- First time use: run `bw login` to login
+- [Bitwarden CLI](https://github.com/bitwarden/clients/releases) (`bw`) installed and logged in (`bw login`).
+
+## Installation
+
+### One-liner (macOS / Linux)
+
+Installs the **latest release** binary into `$HOME/.local/bin` (create the directory if needed). Requires `curl`, `python3`, `tar`, and `shasum`.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/itzhang89/bwenv/main/install.sh | bash
+```
+
+Install system-wide:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/itzhang89/bwenv/main/install.sh | sudo env BWENV_INSTALL_DIR=/usr/local/bin bash
+```
+
+Forks / mirrors: set `BWENV_GITHUB_REPO=owner/repo` if you use another GitHub repo for releases.
+
+**Windows:** there is no install script; open the [latest release](https://github.com/itzhang89/bwenv/releases/latest), download `bwenv-*-windows-x64.zip`, unzip, and put `bwenv.exe` on your PATH.
+
+### Latest release (manual download)
+
+Open the **latest release** page (always points at the newest version):
+
+**[https://github.com/itzhang89/bwenv/releases/latest](https://github.com/itzhang89/bwenv/releases/latest)**
+
+Pick the archive for your OS (each build also has a `.sha256` file you can check with `shasum -a 256 -c`):
+
+| Suffix in filename | Platform |
+|--------------------|----------|
+| `linux-x64` | Linux x86_64 (glibc) |
+| `darwin-arm64` | macOS Apple Silicon |
+| `darwin-x64` | macOS Intel |
+| `windows-x64` | Windows x86_64 (`.zip`) |
+
+Example after download (Linux x64 — replace the file name with the one you downloaded):
+
+```bash
+tar -xzf bwenv-0.1.0-linux-x64.tar.gz
+chmod +x bwenv
+mv bwenv ~/.local/bin/   # or /usr/local/bin with sudo
+```
+
+### Build from source
+
+```bash
+git clone https://github.com/itzhang89/bwenv.git
+cd bwenv
+cargo build --release
+cp target/release/bwenv /usr/local/bin/   # or ~/.local/bin
+```
 
 ## Quick Start
 
@@ -372,4 +366,13 @@ bwenv use prod -f json > secrets.json
 - **Regular cleanup**: Remove unused items from Bitwarden folders
 - **Audit access**: Periodically check which projects have `.bwenv` files in your directories
 - **Test in dev first**: Always test credential export in development before staging/production
+
+## For maintainers
+
+Publishing a release is automated by [`.github/workflows/release.yml`](.github/workflows/release.yml): push a SemVer tag `v*.*.*` whose version (without `v`) matches `version` in `Cargo.toml`. Example:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
 
