@@ -111,13 +111,13 @@ enum Commands {
 enum ProjectCommands {
     /// List all projects
     List,
-    /// Add project: bwenv project add <projectname> <services> [prefix]
+    /// Add project: bwenv project add <name> <prefix> [services]
     Add {
         name: String,
-        /// Service list (comma-separated, empty means all)
-        services: String,
-        /// Prefix (optional)
-        prefix: Option<String>,
+        /// Bitwarden folder name prefix (matches folder in vault)
+        prefix: String,
+        /// Service list (comma-separated; omit for all services)
+        services: Option<String>,
     },
     /// Load projects from file
     Load {
@@ -161,7 +161,7 @@ fn print_bootstrap_help() -> Result<()> {
     println!("  bwenv -f json -o .env                # write JSON to .env (or use -f env)");
     println!("  bwenv list                           # list vault items (current project prefix)");
     println!("  bwenv list --folders                 # list Bitwarden folder names");
-    println!("  bwenv project add <name> \"a,b\" <prefix>");
+    println!("  bwenv project add <name> <prefix> [services]   # e.g. bwenv project add dev developer \"mysql,redis\"");
     println!("  bwenv project list && bwenv current");
     println!("  bwenv config show");
     Ok(())
@@ -298,19 +298,22 @@ fn main() -> Result<()> {
                 Some(ProjectCommands::List) => {
                     config_cmd::list_projects(&config)?;
                 }
-                Some(ProjectCommands::Add { name, services, prefix }) => {
-                    let services: Option<Vec<String>> = if services.is_empty() {
-                        None
-                    } else {
-                        Some(
-                            services
+                Some(ProjectCommands::Add { name, prefix, services }) => {
+                    let services: Option<Vec<String>> = match services.as_deref() {
+                        None | Some("") => None,
+                        Some(s) => {
+                            let v: Vec<String> = s
                                 .split(',')
-                                .map(|s| s.trim().to_string())
-                                .filter(|s| !s.is_empty())
-                                .collect(),
-                        )
+                                .map(|x| x.trim().to_string())
+                                .filter(|x| !x.is_empty())
+                                .collect();
+                            if v.is_empty() {
+                                None
+                            } else {
+                                Some(v)
+                            }
+                        }
                     };
-                    let prefix = prefix.unwrap_or_default();
                     config.add_project(config::models::Project::new(&name, &prefix, services))?;
                     println!("Project added: {}", name);
                 }

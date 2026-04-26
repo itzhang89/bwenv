@@ -25,7 +25,7 @@ cp target/release/bwenv /usr/local/bin/
 
 ```bash
 # 1. Add a project
-bwenv project add dev "mysql,redis" developer
+bwenv project add dev developer "mysql,redis"
 
 # 2. Use the project
 bwenv use dev
@@ -169,7 +169,7 @@ bwenv use dev -o .env          # Switch and export to file
 
 # Project management
 bwenv project                  # List projects
-bwenv project add dev "mysql,redis" developer  # Add project
+bwenv project add dev developer "mysql,redis"  # Add project (omit last arg for all services)
 bwenv project remove dev       # Remove project
 bwenv project load ~/.bwenv    # Load from file
 
