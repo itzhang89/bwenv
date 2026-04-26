@@ -152,7 +152,7 @@ fn print_bootstrap_help() -> Result<()> {
     let mut cmd = Cli::command();
     cmd.print_long_help()?;
     println!();
-    println!("Common examples (常用示例):");
+    println!("Common examples:");
     println!("  bwenv --help");
     println!("  eval \"$(bwenv)\"                    # load current project into shell");
     println!("  bwenv use <project> && eval \"$(bwenv)\"   # switch project, then export env");
