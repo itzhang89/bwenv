@@ -11,7 +11,10 @@ pub struct BitwardenClient {
 
 impl BitwardenClient {
     pub fn new() -> Self {
-        Self { session_key: None }
+        let mut this = Self { session_key: None };
+        // Best-effort: reuse cached session to avoid prompting/unlock on every run.
+        let _ = this.load_cached_session();
+        this
     }
 
     /// bwenv data directory (session and future local state), e.g. `~/.bwenv.d`
@@ -21,10 +24,64 @@ impl BitwardenClient {
             .join(".bwenv.d")
     }
 
-    fn fetch_vault_status_json() -> Result<serde_json::Value> {
-        let output = Command::new("bw")
-            .args(["status", "--session", self.session_key])
-            .output()?;
+    fn session_path() -> PathBuf {
+        Self::data_dir().join("session")
+    }
+
+    fn load_cached_session(&mut self) -> Result<()> {
+        let path = Self::session_path();
+        if !path.exists() {
+            return Ok(());
+        }
+        let s = fs::read_to_string(&path)
+            .map_err(|e| anyhow!("failed to read cached session {}: {}", path.display(), e))?;
+        let s = s.trim();
+        if s.is_empty() {
+            return Ok(());
+        }
+        self.session_key = Some(s.to_string());
+        Ok(())
+    }
+
+    fn save_cached_session(&self) -> Result<()> {
+        let session = match self.session_key.as_deref() {
+            Some(s) if !s.trim().is_empty() => s.trim(),
+            _ => return Ok(()),
+        };
+
+        let dir = Self::data_dir();
+        fs::create_dir_all(&dir)
+            .map_err(|e| anyhow!("failed to create data dir {}: {}", dir.display(), e))?;
+
+        let path = Self::session_path();
+        fs::write(&path, session)
+            .map_err(|e| anyhow!("failed to write cached session {}: {}", path.display(), e))?;
+
+        // Best-effort permissions tightening on unix.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o600));
+        }
+
+        Ok(())
+    }
+
+    fn clear_cached_session(&mut self) {
+        self.session_key = None;
+        let _ = fs::remove_file(Self::session_path());
+    }
+
+    fn fetch_vault_status_json(&self, use_session: bool) -> Result<serde_json::Value> {
+        let mut cmd = Command::new("bw");
+        cmd.arg("status");
+        if use_session {
+            if let Some(ref s) = self.session_key {
+                cmd.args(["--session", s]);
+            }
+        }
+
+        let output = cmd.output()?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(anyhow!("bw status failed: {}", stderr));
@@ -57,6 +114,7 @@ impl BitwardenClient {
 
         let session = String::from_utf8_lossy(&output.stdout).trim().to_string();
         self.session_key = Some(session.clone());
+        self.save_cached_session()?;
 
         Ok(())
     }
@@ -66,7 +124,20 @@ impl BitwardenClient {
     /// - `locked` → `bw unlock` (needs master password).
     /// - `unlocked` → no unlock;
     pub fn ensure_unlocked(&mut self, master_password: Option<&str>) -> Result<()> {
-        let status_json = Self::fetch_vault_status_json()?;
+        // Prefer validating cached session first (fast path).
+        // If it fails (expired/invalid), fall back to non-session status and re-unlock.
+        let (status_json, used_session) = match self.session_key.as_deref() {
+            Some(_) => match self.fetch_vault_status_json(true) {
+                Ok(v) => (v, true),
+                Err(_) => {
+                    // cached session likely expired; clear and continue with normal flow
+                    self.clear_cached_session();
+                    (self.fetch_vault_status_json(false)?, false)
+                }
+            },
+            None => (self.fetch_vault_status_json(false)?, false),
+        };
+
         let status = Self::vault_status_str(&status_json)?;
 
         match status {
@@ -84,18 +155,27 @@ impl BitwardenClient {
                 let password = master_password.ok_or_else(|| {
                     anyhow!("Master password required to unlock vault after login")
                 })?;
-                self.session_key = None;
+                self.clear_cached_session();
                 self.unlock(password)?;
             }
             "locked" => {
                 let password = master_password.ok_or_else(|| {
                     anyhow!("Vault is locked; master password required to unlock")
                 })?;
-                self.session_key = None;
+                self.clear_cached_session();
                 self.unlock(password)?;
             }
             "unlocked" => {}
             other => return Err(anyhow!("Unknown Bitwarden vault status: {}", other)),
+        }
+
+        // If we reached unlocked via non-session flow, we might still benefit from a cached session
+        // for subsequent bw commands. If we don't have one, try to unlock (requires master password).
+        if !used_session && self.session_key.is_none() {
+            if let Some(password) = master_password {
+                // This will no-op if already unlocked? `bw unlock --raw` still returns a session.
+                let _ = self.unlock(password);
+            }
         }
 
         Ok(())

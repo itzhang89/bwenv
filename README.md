@@ -52,7 +52,18 @@ Bitwarden Vault
 
 ### Configuration Format
 
-In `~/.bwenv`, define projects as below. After `bw unlock`, bwenv may cache the raw session key in `~/.bwenv.d/session` for subprocess use; when `bw status` is already `unlocked`, listing uses the CLI’s normal session and does not need that file.
+In `~/.bwenv`, define projects as below.
+
+#### About Bitwarden session (`BW_SESSION`)
+
+Bitwarden CLI returns a **session key** after unlock (`bw unlock --raw`). This session is what authorizes subsequent `bw` commands (e.g. `bw list items`) without re-entering your master password.
+
+`bwenv` handles session like this:
+
+- **Cache location**: `~/.bwenv.d/session` (plain text), permission best-effort set to `0600` on Unix.
+- **Fast path**: on startup, try loading that cached session and run `bw status --session <cached>`.
+- **Auto refresh**: if the cached session is **expired/invalid**, `bwenv` clears the cache and falls back to normal `bw status`/unlock flow; if you provide `BW_MASTER_PASSWORD`, it will re-run `bw unlock --raw` and write a fresh session back to `~/.bwenv.d/session`.
+- **How `bw` consumes it**: `bw` supports either `--session <key>` (what `bwenv` uses) or exporting `BW_SESSION=<key>` in the environment.
 
 ```yaml
 # ~/.bwenv
