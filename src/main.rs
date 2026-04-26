@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 
 mod bitwarden;
 mod commands;
@@ -147,6 +147,26 @@ enum ConfigCommands {
     },
 }
 
+/// When invoked as plain `bwenv` with no arguments, show full help plus common examples.
+fn print_bootstrap_help() -> Result<()> {
+    let mut cmd = Cli::command();
+    cmd.print_long_help()?;
+    println!();
+    println!("Common examples (常用示例):");
+    println!("  bwenv --help");
+    println!("  eval \"$(bwenv)\"                    # load current project into shell");
+    println!("  bwenv use <project> && eval \"$(bwenv)\"   # switch project, then export env");
+    println!("  bwenv use <project> -o .env         # switch and write env to a file in one go");
+    println!("  bwenv -p <prefix> -s <service>      # filter by folder prefix and service name");
+    println!("  bwenv -f json -o .env                # write JSON to .env (or use -f env)");
+    println!("  bwenv list                           # list vault items (current project prefix)");
+    println!("  bwenv list --folders                 # list Bitwarden folder names");
+    println!("  bwenv project add <name> \"a,b\" <prefix>");
+    println!("  bwenv project list && bwenv current");
+    println!("  bwenv config show");
+    Ok(())
+}
+
 fn get_master_password() -> Result<Option<String>> {
     if let Ok(password) = std::env::var("BW_MASTER_PASSWORD") {
         if !password.is_empty() {
@@ -220,6 +240,10 @@ fn run_generate(
 }
 
 fn main() -> Result<()> {
+    if std::env::args_os().len() == 1 {
+        return print_bootstrap_help();
+    }
+
     let cli = Cli::parse();
     let mut config = Config::load()?;
 
