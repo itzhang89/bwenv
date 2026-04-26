@@ -205,29 +205,61 @@ impl BitwardenClient {
         Ok(())
     }
 
-    fn bw_cmd_list_items(&mut self, master_password: Option<&str>) -> Result<std::process::Output> {
-        self.ensure_unlocked(master_password)?;
+    fn looks_like_auth_error(output: &std::process::Output) -> bool {
+        // Bitwarden CLI error strings vary by version, so we keep this fuzzy.
+        let stderr = String::from_utf8_lossy(&output.stderr).to_lowercase();
+        let stdout = String::from_utf8_lossy(&output.stdout).to_lowercase();
+        let hay = format!("{stderr}\n{stdout}");
+
+        hay.contains("vault is locked")
+            || hay.contains("locked")
+            || hay.contains("unauthenticated")
+            || hay.contains("not logged in")
+            || hay.contains("you are not logged in")
+            || hay.contains("session")
+                && (hay.contains("invalid") || hay.contains("expired") || hay.contains("unauthorized"))
+    }
+
+    fn run_bw_with_session(&self, args: &[&str]) -> Result<std::process::Output> {
         let mut cmd = Command::new("bw");
-        cmd.args(["list", "items"]);
+        cmd.args(args);
         if let Some(ref s) = self.session_key {
             cmd.args(["--session", s]);
         }
         cmd.output()
-            .map_err(|e| anyhow!("failed to run bw list items: {}", e))
+            .map_err(|e| anyhow!("failed to run bw {}: {}", args.join(" "), e))
+    }
+
+    fn run_bw_optimistic(
+        &mut self,
+        args: &[&str],
+        master_password: Option<&str>,
+    ) -> Result<std::process::Output> {
+        // Optimistic path: assume bw is already unlocked; try once.
+        let first = self.run_bw_with_session(args)?;
+        if first.status.success() {
+            return Ok(first);
+        }
+
+        // If it doesn't look like an auth/session problem, don't spam unlock prompts.
+        if !Self::looks_like_auth_error(&first) {
+            return Ok(first);
+        }
+
+        // Auth/session issue: refresh session/unlock, then retry once.
+        self.ensure_unlocked(master_password)?;
+        self.run_bw_with_session(args)
+    }
+
+    fn bw_cmd_list_items(&mut self, master_password: Option<&str>) -> Result<std::process::Output> {
+        self.run_bw_optimistic(&["list", "items"], master_password)
     }
 
     fn bw_cmd_list_folders(
         &mut self,
         master_password: Option<&str>,
     ) -> Result<std::process::Output> {
-        self.ensure_unlocked(master_password)?;
-        let mut cmd = Command::new("bw");
-        cmd.args(["list", "folders"]);
-        if let Some(ref s) = self.session_key {
-            cmd.args(["--session", s]);
-        }
-        cmd.output()
-            .map_err(|e| anyhow!("failed to run bw list folders: {}", e))
+        self.run_bw_optimistic(&["list", "folders"], master_password)
     }
 
     /// List all items

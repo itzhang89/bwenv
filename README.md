@@ -62,7 +62,7 @@ Bitwarden CLI returns a **session key** after unlock (`bw unlock --raw`). This s
 
 - **Cache location**: `~/.bwenv.d/session` (plain text), permission best-effort set to `0600` on Unix.
 - **Priority**: if `BW_SESSION` environment variable is set (non-empty), `bwenv` uses it first and also persists it to `~/.bwenv.d/session`.
-- **Fast path**: on startup, try loading that cached session and run `bw status --session <cached>`.
+- **Runtime strategy**: `bwenv` will optimistically run `bw` commands assuming the vault is already unlocked. If a command fails with an auth/locked/session-expired style error, it runs the unlock flow once to refresh the session and retries the command once.
 - **Auto refresh**: if the cached session is **expired/invalid**, `bwenv` clears the cache and falls back to normal `bw status`/unlock flow; if you provide `BW_MASTER_PASSWORD`, it will re-run `bw unlock --raw` and write a fresh session back to `~/.bwenv.d/session`.
 - **How `bw` consumes it**: `bw` supports either `--session <key>` (what `bwenv` uses) or exporting `BW_SESSION=<key>` in the environment.
 
