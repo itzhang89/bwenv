@@ -114,6 +114,15 @@ impl Config {
         }
         let content = serde_yaml::to_string(&self)?;
         fs::write(&path, content)?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).map_err(|e| {
+                anyhow!("failed to set mode 0600 on {}: {}", path.display(), e)
+            })?;
+        }
+
         Ok(())
     }
 
