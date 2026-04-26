@@ -1,44 +1,154 @@
+# When you push a tag `v*.*.*`, this workflow:
+# 1) Verifies `Cargo.toml` `version` matches the tag (without the leading `v`)
+# 2) Builds `bwenv` release binaries for common targets
+# 3) Publishes a GitHub Release with those assets
+
 name: Release
 
 on:
   push:
     tags:
-      - 'v*'
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: 0
 
 jobs:
-  release:
+  check-version:
+    name: Check version vs tag
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify Cargo.toml version matches tag
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME#v}"
+          CARGO_VER=$(grep -E '^version\s*=' Cargo.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+          if [ "$CARGO_VER" != "$TAG" ]; then
+            echo "::error::Cargo.toml version ($CARGO_VER) does not match git tag v$TAG. Bump version in Cargo.toml, commit, then tag v${CARGO_VER} (or set version to $TAG and retag)."
+            exit 1
+          fi
+          echo "OK: Cargo $CARGO_VER matches tag v$TAG"
+
+  build:
+    name: Build (${{ matrix.name }})
+    needs: [check-version]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            name: linux-x64
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+            name: windows-x64
+          - os: macos-14
+            target: aarch64-apple-darwin
+            name: darwin-arm64
+          - os: macos-13
+            target: x86_64-apple-darwin
+            name: darwin-x64
+
+    runs-on: ${{ matrix.os }}
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Rust
+      - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
       - name: Build release
-        run: |
-          cargo build --release --locked
+        run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Create tarball
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          mkdir -p release
-          cp target/release/bwenv release/
-          tar -czvf bwenv-${VERSION}-x86_64-unknown-linux-gnu.tar.gz -C release .
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          BIN="target/${{ matrix.target }}/release/bwenv"
+          strip "$BIN" 2>/dev/null || true
+          mkdir -p dist
+          OUT="dist/bwenv-${VERSION}-${{ matrix.name }}"
+          cp "$BIN" "dist/bwenv"
+          chmod +x "dist/bwenv"
+          tar -czf "${OUT}.tar.gz" -C dist bwenv
+          (cd dist && shasum -a 256 "$(basename "${OUT}.tar.gz")") > "${OUT}.tar.gz.sha256"
 
-      - name: Create macOS binary (cross-compile)
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
         run: |
-          # For macOS, we'd need cross compilation or a separate job
-          echo "macOS build would require separate runner"
+          $ErrorActionPreference = "Stop"
+          $ref = "${{ github.ref_name }}"
+          if ($ref -match '^v') { $v = $ref.Substring(1) } else { $v = $ref }
+          $bin = "target/${{ matrix.target }}/release/bwenv.exe"
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $base = "dist/bwenv-$v-${{ matrix.name }}"
+          $zip = "$base.zip"
+          Copy-Item $bin (Join-Path dist "bwenv.exe")
+          Compress-Archive -Path "dist/bwenv.exe" -DestinationPath $zip -Force
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          $leaf = Split-Path -Leaf $zip
+          Set-Content -Path "$zip.sha256" -Value "$hash  $leaf"
 
-      - name: Release
-        uses: softprops/action-gh-release@v1
+      - name: Upload artifacts (Unix)
+        if: runner.os != 'Windows'
+        uses: actions/upload-artifact@v4
         with:
-          files: |
-            bwenv-*.tar.gz
+          name: release-${{ matrix.name }}
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+          if-no-files-found: error
+
+      - name: Upload artifacts (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.name }}
+          path: |
+            dist/*.zip
+            dist/*.zip.sha256
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Assemble release assets
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          shopt -s nullglob
+          for f in artifacts/*/*; do
+            cp -a "$f" release-assets/
+          done
+          ls -la release-assets
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
           generate_release_notes: true
+          files: release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

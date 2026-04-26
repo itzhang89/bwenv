@@ -4,6 +4,37 @@ A CLI tool to read credentials from Bitwarden vault and convert them to environm
 
 ## Installation
 
+### Prebuilt binary (GitHub Releases)
+
+1. On GitHub, open this repository’s **Releases** page (`https://github.com/<owner>/<repo>/releases`) and download the asset for your platform:
+
+| Asset suffix | Platform |
+|--------------|----------|
+| `linux-x64` | Linux x86_64 (glibc) |
+| `windows-x64` | Windows x86_64 (`.zip` includes `bwenv.exe`) |
+| `darwin-arm64` | macOS Apple Silicon (arm64) |
+| `darwin-x64` | macOS Intel (x64) |
+
+2. **Verify integrity (optional):** for each `bwenv-…-.tar.gz` or `.zip`, compare the `SHA256` in the matching `.sha256` file. Example (macOS/Linux):
+
+```bash
+shasum -a 256 -c bwenv-0.1.0-linux-x64.tar.gz.sha256
+```
+
+3. **Install:**
+
+**macOS / Linux (from `.tar.gz`):**
+
+```bash
+tar -xzf bwenv-0.1.0-linux-x64.tar.gz   # contains a single binary named bwenv
+chmod +x bwenv
+sudo mv bwenv /usr/local/bin/           # or another directory on your $PATH
+```
+
+**Windows (from `.zip`):** unzip, then add the folder that contains `bwenv.exe` to your PATH, or copy `bwenv.exe` to a directory already on PATH.
+
+### Build from source (Rust / Cargo)
+
 ```bash
 # Clone the project
 git clone <repo-url>
@@ -15,6 +46,20 @@ cargo build --release
 # Install to PATH
 cp target/release/bwenv /usr/local/bin/
 ```
+
+### Releasing a new version (maintainers)
+
+Releases are built by [`.github/workflows/release.yml`](.github/workflows/release.yml) when a **SemVer** tag is pushed: `vMAJOR.MINOR.PATCH` (e.g. `v0.1.0`).
+
+1. Set `version` in `Cargo.toml` to match the version you will tag (e.g. `0.1.0`).
+2. Commit, then tag and push the tag (not only `main`):
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The workflow checks that `Cargo.toml`’s `version` equals the tag without the leading `v`, then builds and publishes the GitHub Release with binaries. If the check fails, fix the version, commit, and retag.
 
 ## Requirements
 
