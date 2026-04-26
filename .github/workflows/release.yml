@@ -1,7 +1,7 @@
-# When you push a tag `v*.*.*`, this workflow:
-# 1) Verifies `Cargo.toml` `version` matches the tag (without the leading `v`)
-# 2) Builds `bwenv` release binaries for common targets
-# 3) Publishes a GitHub Release with those assets
+# When you push a tag `v*.*.*`, or run this workflow manually with a tag input:
+# 1) Checks out that tag
+# 2) Verifies `Cargo.toml` `version` matches the tag (without the leading `v`)
+# 3) Builds release binaries and publishes a GitHub Release
 
 name: Release
 
@@ -9,12 +9,18 @@ on:
   push:
     tags:
       - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing git tag to build and publish (e.g. v0.1.0). Must match version in Cargo.toml on that tag."
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.event_name }}-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -24,16 +30,28 @@ jobs:
   check-version:
     name: Check version vs tag
     runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.meta.outputs.tag }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - id: meta
+        name: Resolve release tag
+        run: echo "tag=$REL" >> "$GITHUB_OUTPUT"
+        env:
+          REL: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
       - name: Verify Cargo.toml version matches tag
+        env:
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF_NAME#v}"
+          TAG="${RELEASE_TAG#v}"
           CARGO_VER=$(grep -E '^version\s*=' Cargo.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
           if [ "$CARGO_VER" != "$TAG" ]; then
-            echo "::error::Cargo.toml version ($CARGO_VER) does not match git tag v$TAG. Bump version in Cargo.toml, commit, then tag v${CARGO_VER} (or set version to $TAG and retag)."
+            echo "::error::Cargo.toml version ($CARGO_VER) does not match tag v$TAG. Bump version in Cargo.toml on that tag, or pass the matching tag to this workflow."
             exit 1
           fi
           echo "OK: Cargo $CARGO_VER matches tag v$TAG"
@@ -62,6 +80,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.check-version.outputs.release_tag }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -73,9 +93,11 @@ jobs:
 
       - name: Package (Unix)
         if: runner.os != 'Windows'
+        env:
+          RELEASE_TAG: ${{ needs.check-version.outputs.release_tag }}
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${RELEASE_TAG#v}"
           BIN="target/${{ matrix.target }}/release/bwenv"
           strip "$BIN" 2>/dev/null || true
           mkdir -p dist
@@ -88,9 +110,11 @@ jobs:
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
+        env:
+          RELEASE_TAG: ${{ needs.check-version.outputs.release_tag }}
         run: |
           $ErrorActionPreference = "Stop"
-          $ref = "${{ github.ref_name }}"
+          $ref = $env:RELEASE_TAG
           if ($ref -match '^v') { $v = $ref.Substring(1) } else { $v = $ref }
           $bin = "target/${{ matrix.target }}/release/bwenv.exe"
           New-Item -ItemType Directory -Force dist | Out-Null
@@ -124,7 +148,7 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: [build]
+    needs: [check-version, build]
     runs-on: ubuntu-latest
     steps:
       - name: Download all build artifacts
@@ -139,6 +163,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
+          tag_name: ${{ needs.check-version.outputs.release_tag }}
           draft: false
           generate_release_notes: true
           files: release-assets/*

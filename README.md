@@ -243,10 +243,15 @@ In **GitHub Actions**, map a [repository secret](https://docs.github.com/en/acti
 
 ## For maintainers
 
-Releases are built by [`.github/workflows/release.yml`](.github/workflows/release.yml) when a SemVer tag **`v*.*.*`** is pushed and **`Cargo.toml`’s `version`** matches the tag (without the `v`).
+Releases are built by [`.github/workflows/release.yml`](.github/workflows/release.yml) when:
+
+1. **Push a SemVer tag** `v*.*.*` whose version (without `v`) matches **`Cargo.toml`’s `version`**, or  
+2. **Run workflow manually**: GitHub → **Actions** → **Release** → **Run workflow** → enter the existing tag (e.g. `v0.1.0`) in **tag**. Useful to **rebuild assets** or fix a failed release without re-pushing the tag.
 
 ```bash
 # After bumping version in Cargo.toml and committing:
 git tag v0.1.0
 git push origin v0.1.0
 ```
+
+The tag must already exist on the remote; manual runs check out that ref and publish (or refresh) the GitHub Release for the same tag.
