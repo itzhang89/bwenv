@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -12,8 +13,14 @@ pub struct BitwardenClient {
 impl BitwardenClient {
     pub fn new() -> Self {
         let mut this = Self { session_key: None };
-        // Best-effort: reuse cached session to avoid prompting/unlock on every run.
-        let _ = this.load_cached_session();
+        // Priority: if caller already has a session in env, persist it for reuse.
+        // Fallback: reuse cached session to avoid prompting/unlock on every run.
+        if this.load_session_from_env().is_err() {
+            // ignore
+        }
+        if this.session_key.is_none() {
+            let _ = this.load_cached_session();
+        }
         this
     }
 
@@ -26,6 +33,23 @@ impl BitwardenClient {
 
     fn session_path() -> PathBuf {
         Self::data_dir().join("session")
+    }
+
+    fn load_session_from_env(&mut self) -> Result<()> {
+        let v = match env::var("BW_SESSION") {
+            Ok(v) => v,
+            Err(env::VarError::NotPresent) => return Ok(()),
+            Err(e) => return Err(anyhow!("failed to read BW_SESSION env var: {}", e)),
+        };
+
+        let v = v.trim();
+        if v.is_empty() {
+            return Ok(());
+        }
+
+        self.session_key = Some(v.to_string());
+        self.save_cached_session()?;
+        Ok(())
     }
 
     fn load_cached_session(&mut self) -> Result<()> {
