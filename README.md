@@ -52,7 +52,7 @@ Bitwarden Vault
 
 ### Configuration Format
 
-In `~/.bwenv`, define projects as below.
+In `~/.bwenv.d/bwenv`, define projects as below.
 
 #### About Bitwarden session (`BW_SESSION`)
 
@@ -128,6 +128,8 @@ eval "$(bwenv use dev)"
 # Load with filters
 eval "$(bwenv -p developer -s mysql)"
 ```
+
+In an **interactive** terminal, plain `bwenv` (no args) prints help. Commands like `eval "$(bwenv)"` still run the generator, because the subprocess stdout is a pipe, not a TTY—avoiding zsh `eval` errors on text such as `[OPTIONS]`.
 
 #### Permanent Shell Setup
 

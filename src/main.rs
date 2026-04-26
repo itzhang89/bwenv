@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use clap::{CommandFactory, Parser, Subcommand};
+use std::io::IsTerminal;
 
 mod bitwarden;
 mod commands;
@@ -240,7 +241,10 @@ fn run_generate(
 }
 
 fn main() -> Result<()> {
-    if std::env::args_os().len() == 1 {
+    // Only print help for an interactive, argument-less `bwenv`. When stdout is a pipe/redirect
+    // (e.g. `eval "$(bwenv)"`), we must run the default generate path: clap's help text contains
+    // patterns like `[OPTIONS]` that zsh treats as globs and breaks `eval` with "no matches found".
+    if std::env::args_os().len() == 1 && std::io::stdout().is_terminal() {
         return print_bootstrap_help();
     }
 
