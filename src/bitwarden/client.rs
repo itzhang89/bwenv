@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use crate::bitwarden::models::{BitwardenFolder, BitwardenItem};
 
@@ -21,100 +21,28 @@ impl BitwardenClient {
             .join(".bwenv.d")
     }
 
-    /// Session cache file (bwenv-only; not used by the `bw` CLI)
-    fn session_path() -> PathBuf {
-        Self::data_dir().join("session")
-    }
-
-    fn read_session_file(path: &std::path::Path) -> Option<String> {
-        fs::read_to_string(path)
-            .ok()
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-    }
-
-    /// Load cached session (trimmed; file may end with newline)
-    fn load_session() -> Option<String> {
-        let path = Self::session_path();
-        if path.exists() {
-            return Self::read_session_file(&path);
-        }
-        None
-    }
-
-    /// True if `bw list items` accepts this session and returns non-empty JSON-like output.
-    /// Exit code alone is not enough: some failures still exit 0 with an empty stdout.
-    fn session_can_list_items(session: &str) -> Result<bool> {
-        let output = Command::new("bw")
-            .args(["list", "items", "--session", session])
-            .output()?;
-
+    fn fetch_vault_status_json() -> Result<serde_json::Value> {
+        let output = Command::new("bw").arg("status").output()?;
         if !output.status.success() {
-            return Ok(false);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(anyhow!("bw status failed: {}", stderr));
         }
-
         let stdout = String::from_utf8_lossy(&output.stdout);
         let trimmed = stdout.trim();
         if trimmed.is_empty() {
-            return Ok(false);
+            return Err(anyhow!("bw status: empty output"));
         }
-        Ok(trimmed.starts_with('[') || trimmed.starts_with('{'))
+        serde_json::from_str(trimmed).map_err(|e| anyhow!("bw status: invalid JSON: {}", e))
     }
 
-    /// Save session to cache
-    fn save_session(session: &str) -> Result<()> {
-        let path = Self::session_path();
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        fs::write(&path, session)?;
-        Ok(())
+    fn vault_status_str(value: &serde_json::Value) -> Result<&str> {
+        value
+            .get("status")
+            .and_then(|s| s.as_str())
+            .ok_or_else(|| anyhow!("bw status: missing \"status\" field"))
     }
 
-    /// Clear session file (new and legacy paths)
-    fn clear_session() {
-        let path = Self::session_path();
-        if path.exists() {
-            let _ = fs::remove_file(&path);
-        }
-    }
-
-    /// Check if error indicates invalid/expired session
-    fn is_session_invalid_error(error: &str) -> bool {
-        let lower = error.to_lowercase();
-        lower.contains("empty response")
-            || lower.contains("not json")
-            || lower.contains("session")
-            || lower.contains("unauthorized")
-            || lower.contains("not authorized")
-            || lower.contains("bw_errorresponse")
-            || lower.contains("too many login requests")
-    }
-
-    /// Check if session is valid (must actually list items with parseable-looking output).
-    fn check_session(&mut self) -> Result<bool> {
-        if let Some(ref session) = self.session_key {
-            if Self::session_can_list_items(session)? {
-                return Ok(true);
-            }
-            // In-memory session is stale
-            self.session_key = None;
-        }
-
-        // Try to load cached session from disk
-        if let Some(session) = Self::load_session() {
-            if Self::session_can_list_items(&session)? {
-                self.session_key = Some(session);
-                return Ok(true);
-            }
-            // Drop bad cache so later unlock writes a fresh key
-            Self::clear_session();
-        }
-
-        Ok(false)
-    }
-
-    /// Unlock vault
+    /// Unlock vault; sets `session_key` and caches it for locked-mode subprocesses.
     fn unlock(&mut self, password: &str) -> Result<()> {
         let output = Command::new("bw")
             .args(["unlock", password, "--raw"])
@@ -127,54 +55,78 @@ impl BitwardenClient {
 
         let session = String::from_utf8_lossy(&output.stdout).trim().to_string();
         self.session_key = Some(session.clone());
-        Self::save_session(&session)?;
 
         Ok(())
     }
 
-    /// Ensure unlocked (try to unlock if not unlocked)
-    /// If master_password is None and unlock is needed, returns error
+    /// Align with `bw status` for the current machine / CLI data dir:
+    /// - `unauthenticated` → `bw login`, then `bw unlock` (needs master password).
+    /// - `locked` → `bw unlock` (needs master password).
+    /// - `unlocked` → no unlock; subsequent `bw` calls run without `--session`.
     pub fn ensure_unlocked(&mut self, master_password: Option<&str>) -> Result<()> {
-        if self.session_key.is_none() {
-            // Try to check cached session
-            if !self.check_session()? {
-                // Need to unlock
-                let password = master_password.ok_or_else(|| {
-                    anyhow!("Vault is locked, need master password to unlock")
-                })?;
-                self.unlock(password)?;
-            }
-        } else {
-            // Session exists, but may be expired, check status
-            let status_output = Command::new("bw").arg("status").output()?;
-            let status_str = String::from_utf8_lossy(&status_output.stdout);
+        let status_json = Self::fetch_vault_status_json()?;
+        let status = Self::vault_status_str(&status_json)?;
 
-            if status_str.contains("\"status\":\"locked\"") {
-                // Session expired, vault is locked, need to re-unlock
+        match status {
+            "unauthenticated" => {
+                let st = Command::new("bw")
+                    .arg("login")
+                    .stdin(Stdio::inherit())
+                    .stdout(Stdio::inherit())
+                    .stderr(Stdio::inherit())
+                    .status()
+                    .map_err(|e| anyhow!("failed to run bw login: {}", e))?;
+                if !st.success() {
+                    return Err(anyhow!(
+                        "`bw login` exited with status {:?}",
+                        st.code()
+                    ));
+                }
                 let password = master_password.ok_or_else(|| {
-                    anyhow!("Vault is locked, need master password to unlock")
+                    anyhow!("Master password required to unlock vault after login")
                 })?;
+                self.session_key = None;
                 self.unlock(password)?;
             }
+            "locked" => {
+                let password = master_password.ok_or_else(|| {
+                    anyhow!("Vault is locked; master password required to unlock")
+                })?;
+                self.session_key = None;
+                self.unlock(password)?;
+            }
+            "unlocked" => {
+            }
+            other => return Err(anyhow!("Unknown Bitwarden vault status: {}", other)),
         }
+
         Ok(())
     }
 
-    /// Get session (unlock if needed first)
-    pub fn get_session(&mut self, master_password: Option<&str>) -> Result<String> {
+    fn bw_cmd_list_items(&mut self, master_password: Option<&str>) -> Result<std::process::Output> {
         self.ensure_unlocked(master_password)?;
-        self.session_key
-            .clone()
-            .ok_or_else(|| anyhow!("Cannot get session"))
+        let mut cmd = Command::new("bw");
+        cmd.args(["list", "items"]);
+        if let Some(ref s) = self.session_key {
+            cmd.args(["--session", s]);
+        }
+        cmd.output().map_err(|e| anyhow!("failed to run bw list items: {}", e))
+    }
+
+    fn bw_cmd_list_folders(&mut self, master_password: Option<&str>) -> Result<std::process::Output> {
+        self.ensure_unlocked(master_password)?;
+        let mut cmd = Command::new("bw");
+        cmd.args(["list", "folders"]);
+        if let Some(ref s) = self.session_key {
+            cmd.args(["--session", s]);
+        }
+        cmd.output()
+            .map_err(|e| anyhow!("failed to run bw list folders: {}", e))
     }
 
     /// List all items
     pub fn list_items(&mut self, master_password: Option<&str>) -> Result<Vec<BitwardenItem>> {
-        let session = self.get_session(master_password)?;
-
-        let output = Command::new("bw")
-            .args(["list", "items", "--session", &session])
-            .output()?;
+        let output = self.bw_cmd_list_items(master_password)?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -186,7 +138,6 @@ impl BitwardenClient {
             return Err(anyhow!("Empty response from Bitwarden. Is the vault locked or empty?"));
         }
 
-        // Check if response looks like valid JSON before parsing
         let trimmed = stdout.trim();
         if !trimmed.starts_with('[') && !trimmed.starts_with('{') {
             return Err(anyhow!(
@@ -203,11 +154,7 @@ impl BitwardenClient {
 
     /// List all folders
     pub fn list_folders(&mut self, master_password: Option<&str>) -> Result<Vec<BitwardenFolder>> {
-        let session = self.get_session(master_password)?;
-
-        let output = Command::new("bw")
-            .args(["list", "folders", "--session", &session])
-            .output()?;
+        let output = self.bw_cmd_list_folders(master_password)?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -219,7 +166,6 @@ impl BitwardenClient {
             return Err(anyhow!("Empty response from Bitwarden. Is the vault locked or empty?"));
         }
 
-        // Check if response looks like valid JSON before parsing
         let trimmed = stdout.trim();
         if !trimmed.starts_with('[') && !trimmed.starts_with('{') {
             return Err(anyhow!(
@@ -241,51 +187,9 @@ impl BitwardenClient {
         folder_prefix: Option<&str>,
         service_name: Option<&str>,
     ) -> Result<Vec<BitwardenItem>> {
-        self.list_items_by_folder_and_service_impl(master_password, folder_prefix, service_name, true)
-    }
+        let items = self.list_items(master_password)?;
+        let folders = self.list_folders(master_password)?;
 
-    /// Internal implementation with retry support
-    fn list_items_by_folder_and_service_impl(
-        &mut self,
-        master_password: Option<&str>,
-        folder_prefix: Option<&str>,
-        service_name: Option<&str>,
-        is_retry: bool,
-    ) -> Result<Vec<BitwardenItem>> {
-        let items_result = self.list_items(master_password);
-        let folders_result = self.list_folders(master_password);
-
-        // Check if either call failed with session-related error
-        let items_err_str = items_result.as_ref().err().map(|e| e.to_string()).unwrap_or_default();
-        let folders_err_str = folders_result.as_ref().err().map(|e| e.to_string()).unwrap_or_default();
-
-        // If failed due to session issue and we haven't retried yet, try re-unlocking
-        if (Self::is_session_invalid_error(&items_err_str) || Self::is_session_invalid_error(&folders_err_str))
-            && !is_retry
-            && master_password.is_some()
-        {
-            // Clear invalid session and re-unlock
-            Self::clear_session();
-            self.session_key = None;
-
-            // Re-unlock with master password
-            if let Err(e) = self.unlock(master_password.unwrap()) {
-                return Err(anyhow!("Session expired, re-unlock failed: {}", e));
-            }
-
-            // Retry the operation once
-            return self.list_items_by_folder_and_service_impl(
-                master_password,
-                folder_prefix,
-                service_name,
-                true,
-            );
-        }
-
-        let items = items_result?;
-        let folders = folders_result?;
-
-        // Build folder_id -> folder_name mapping
         let folder_map: std::collections::HashMap<String, String> = folders
             .iter()
             .filter_map(|f| {
@@ -298,7 +202,6 @@ impl BitwardenClient {
         let filtered: Vec<BitwardenItem> = items
             .into_iter()
             .filter(|item| {
-                // Get folder name
                 let folder_name = item
                     .folder_id
                     .as_str()
@@ -306,14 +209,12 @@ impl BitwardenClient {
                     .map(|s| s.as_str())
                     .unwrap_or("");
 
-                // Filter by folder prefix
                 let matches_prefix = if let Some(prefix) = folder_prefix {
                     folder_name.starts_with(prefix)
                 } else {
                     true
                 };
 
-                // Filter by service name
                 let matches_service = if let Some(service) = service_name {
                     item.name.as_str().map(|n| n.to_lowercase()).unwrap_or_default().contains(&service.to_lowercase())
                 } else {

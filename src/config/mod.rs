@@ -55,10 +55,10 @@ impl Config {
     }
 
     fn config_path() -> PathBuf {
-        // ~/.bwenv file
+        // ~/.bwenv.d/bwenv
         dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join(".bwenv")
+            .join(".bwenv.d/bwenv")
     }
 
     /// Find .bwenv file in current or parent directory
