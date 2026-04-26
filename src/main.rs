@@ -160,7 +160,7 @@ fn get_master_password() -> Result<Option<String>> {
         }
     }
 
-    use dialoguer::Password;
+    use dialoguer::{Confirm, Password};
 
     let password: String = Password::new()
         .with_prompt("Enter Bitwarden master password")
@@ -169,6 +169,17 @@ fn get_master_password() -> Result<Option<String>> {
     if password.is_empty() {
         Ok(None)
     } else {
+        let save = Confirm::new()
+            .with_prompt("Save master password to local config (~/.bwenv.d/bwenv)?")
+            .default(true)
+            .interact()
+            .unwrap_or(true);
+
+        if save {
+            let mut config = Config::load().unwrap_or_default();
+            // Best-effort save: if it fails, still proceed with the provided password.
+            let _ = config.set_master_password(password.clone());
+        }
         Ok(Some(password))
     }
 }
