@@ -22,7 +22,9 @@ impl BitwardenClient {
     }
 
     fn fetch_vault_status_json() -> Result<serde_json::Value> {
-        let output = Command::new("bw").arg("status").output()?;
+        let output = Command::new("bw")
+            .args(["status", "--session", self.session_key])
+            .output()?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(anyhow!("bw status failed: {}", stderr));
@@ -62,7 +64,7 @@ impl BitwardenClient {
     /// Align with `bw status` for the current machine / CLI data dir:
     /// - `unauthenticated` → `bw login`, then `bw unlock` (needs master password).
     /// - `locked` → `bw unlock` (needs master password).
-    /// - `unlocked` → no unlock; subsequent `bw` calls run without `--session`.
+    /// - `unlocked` → no unlock;
     pub fn ensure_unlocked(&mut self, master_password: Option<&str>) -> Result<()> {
         let status_json = Self::fetch_vault_status_json()?;
         let status = Self::vault_status_str(&status_json)?;
@@ -77,10 +79,7 @@ impl BitwardenClient {
                     .status()
                     .map_err(|e| anyhow!("failed to run bw login: {}", e))?;
                 if !st.success() {
-                    return Err(anyhow!(
-                        "`bw login` exited with status {:?}",
-                        st.code()
-                    ));
+                    return Err(anyhow!("`bw login` exited with status {:?}", st.code()));
                 }
                 let password = master_password.ok_or_else(|| {
                     anyhow!("Master password required to unlock vault after login")
@@ -95,8 +94,7 @@ impl BitwardenClient {
                 self.session_key = None;
                 self.unlock(password)?;
             }
-            "unlocked" => {
-            }
+            "unlocked" => {}
             other => return Err(anyhow!("Unknown Bitwarden vault status: {}", other)),
         }
 
@@ -110,10 +108,14 @@ impl BitwardenClient {
         if let Some(ref s) = self.session_key {
             cmd.args(["--session", s]);
         }
-        cmd.output().map_err(|e| anyhow!("failed to run bw list items: {}", e))
+        cmd.output()
+            .map_err(|e| anyhow!("failed to run bw list items: {}", e))
     }
 
-    fn bw_cmd_list_folders(&mut self, master_password: Option<&str>) -> Result<std::process::Output> {
+    fn bw_cmd_list_folders(
+        &mut self,
+        master_password: Option<&str>,
+    ) -> Result<std::process::Output> {
         self.ensure_unlocked(master_password)?;
         let mut cmd = Command::new("bw");
         cmd.args(["list", "folders"]);
@@ -135,7 +137,9 @@ impl BitwardenClient {
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         if stdout.trim().is_empty() {
-            return Err(anyhow!("Empty response from Bitwarden. Is the vault locked or empty?"));
+            return Err(anyhow!(
+                "Empty response from Bitwarden. Is the vault locked or empty?"
+            ));
         }
 
         let trimmed = stdout.trim();
@@ -147,7 +151,11 @@ impl BitwardenClient {
         }
 
         let items: Vec<BitwardenItem> = serde_json::from_slice(&output.stdout).map_err(|e| {
-            anyhow!("Failed to parse items JSON: {}. Response: {}", e, trimmed.chars().take(500).collect::<String>())
+            anyhow!(
+                "Failed to parse items JSON: {}. Response: {}",
+                e,
+                trimmed.chars().take(500).collect::<String>()
+            )
         })?;
         Ok(items)
     }
@@ -163,7 +171,9 @@ impl BitwardenClient {
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         if stdout.trim().is_empty() {
-            return Err(anyhow!("Empty response from Bitwarden. Is the vault locked or empty?"));
+            return Err(anyhow!(
+                "Empty response from Bitwarden. Is the vault locked or empty?"
+            ));
         }
 
         let trimmed = stdout.trim();
@@ -174,9 +184,14 @@ impl BitwardenClient {
             ));
         }
 
-        let folders: Vec<BitwardenFolder> = serde_json::from_slice(&output.stdout).map_err(|e| {
-            anyhow!("Failed to parse folders JSON: {}. Response: {}", e, trimmed.chars().take(500).collect::<String>())
-        })?;
+        let folders: Vec<BitwardenFolder> =
+            serde_json::from_slice(&output.stdout).map_err(|e| {
+                anyhow!(
+                    "Failed to parse folders JSON: {}. Response: {}",
+                    e,
+                    trimmed.chars().take(500).collect::<String>()
+                )
+            })?;
         Ok(folders)
     }
 
@@ -216,7 +231,11 @@ impl BitwardenClient {
                 };
 
                 let matches_service = if let Some(service) = service_name {
-                    item.name.as_str().map(|n| n.to_lowercase()).unwrap_or_default().contains(&service.to_lowercase())
+                    item.name
+                        .as_str()
+                        .map(|n| n.to_lowercase())
+                        .unwrap_or_default()
+                        .contains(&service.to_lowercase())
                 } else {
                     true
                 };
